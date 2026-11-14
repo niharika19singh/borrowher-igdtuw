@@ -349,4 +349,179 @@ describe('Listing Account Validation & getListing Hardening Integration Tests', 
       ).rejects.toThrow('Your account status is invalid or inactive. Marketplace modifications are denied.');
     });
   });
+
+  // ===========================================================================
+  // PARTIAL LISTING UPDATE & MERGED STATE VALIDATION (updateListing)
+  // ===========================================================================
+  describe('Partial Listing Update & Merged State Validation (updateListing)', () => {
+    const updateTestListingId = 'listing_update_test_1';
+    const freePeerTestListingId = 'listing_update_test_free';
+
+    beforeEach(async () => {
+      const now = new Date().toISOString();
+      // Rental listing: minDays 2, maxDays 7, pricePerDay 25
+      await db.collection('listings').doc(updateTestListingId).set({
+        listingId: updateTestListingId,
+        ownerUid: activeStudentUid,
+        title: 'Original Drafter Title',
+        description: 'Original description of the drafting kit.',
+        categoryId: 'lab-project-equipment',
+        condition: 'good',
+        imagePaths: ['listing-images/orig.jpg'],
+        mode: 'rental',
+        pricePerDay: 25,
+        depositAmount: 300,
+        minDays: 2,
+        maxDays: 7,
+        pickupZoneIds: ['admin-block-foyer'],
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Free peer listing: minDays 1, maxDays 5, pricePerDay 0
+      await db.collection('listings').doc(freePeerTestListingId).set({
+        listingId: freePeerTestListingId,
+        ownerUid: activeStudentUid,
+        title: 'Free Engineering Textbook',
+        description: 'Free peer lending for semester reference.',
+        categoryId: 'academic-books',
+        condition: 'like-new',
+        imagePaths: ['listing-images/book.jpg'],
+        mode: 'free_peer',
+        pricePerDay: 0,
+        depositAmount: 100,
+        minDays: 1,
+        maxDays: 5,
+        pickupZoneIds: ['admin-block-foyer'],
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    it('rejects updating minDays alone beyond existing maxDays', async () => {
+      // Existing maxDays is 7. Updating minDays alone to 10 makes maxDays (7) < minDays (10)
+      try {
+        await (updateListing as any).run({
+          auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+          data: {
+            listingId: updateTestListingId,
+            minDays: 10,
+          },
+        });
+        expect.fail('Should have thrown validation error');
+      } catch (err: any) {
+        expect(err.code).toBe('invalid-argument');
+        expect(err.message).toBe('Validation failed');
+        expect(
+          err.details?.issues?.some((i: any) =>
+            i.message.includes('Maximum borrow days must be greater than or equal to minimum borrow days')
+          )
+        ).toBe(true);
+      }
+    });
+
+    it('rejects updating maxDays below existing minDays', async () => {
+      // Existing minDays is 2. Updating maxDays alone to 1 makes maxDays (1) < minDays (2)
+      try {
+        await (updateListing as any).run({
+          auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+          data: {
+            listingId: updateTestListingId,
+            maxDays: 1,
+          },
+        });
+        expect.fail('Should have thrown validation error');
+      } catch (err: any) {
+        expect(err.code).toBe('invalid-argument');
+        expect(err.message).toBe('Validation failed');
+        expect(
+          err.details?.issues?.some((i: any) =>
+            i.message.includes('Maximum borrow days must be greater than or equal to minimum borrow days')
+          )
+        ).toBe(true);
+      }
+    });
+
+    it('rejects switching rental to free_peer without resetting price', async () => {
+      // Existing listing is rental with pricePerDay: 25. Updating mode alone leaves price > 0
+      try {
+        await (updateListing as any).run({
+          auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+          data: {
+            listingId: updateTestListingId,
+            mode: 'free_peer',
+          },
+        });
+        expect.fail('Should have thrown validation error');
+      } catch (err: any) {
+        expect(err.code).toBe('invalid-argument');
+        expect(err.message).toBe('Validation failed');
+        expect(
+          err.details?.issues?.some((i: any) =>
+            i.message.includes('Price per day must be 0 for free peer lending mode')
+          )
+        ).toBe(true);
+      }
+    });
+
+    it('rejects updating price while mode is free_peer', async () => {
+      // Existing listing is free_peer. Updating pricePerDay to 15 violates free_peer constraint
+      try {
+        await (updateListing as any).run({
+          auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+          data: {
+            listingId: freePeerTestListingId,
+            pricePerDay: 15,
+          },
+        });
+        expect.fail('Should have thrown validation error');
+      } catch (err: any) {
+        expect(err.code).toBe('invalid-argument');
+        expect(err.message).toBe('Validation failed');
+        expect(
+          err.details?.issues?.some((i: any) =>
+            i.message.includes('Price per day must be 0 for free peer lending mode')
+          )
+        ).toBe(true);
+      }
+    });
+
+    it('accepts valid partial updates (title, minDays, and mode switch with price reset)', async () => {
+      // 1. Update title alone
+      const titleRes = await (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          title: 'Brand New Drafter Title',
+        },
+      });
+      expect(titleRes.title).toBe('Brand New Drafter Title');
+      expect(titleRes.pricePerDay).toBe(25); // preserved
+
+      // 2. Update minDays within existing maxDays (4 <= 7)
+      const daysRes = await (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          minDays: 4,
+        },
+      });
+      expect(daysRes.minDays).toBe(4);
+      expect(daysRes.maxDays).toBe(7);
+
+      // 3. Switch rental to free_peer with pricePerDay: 0
+      const freeRes = await (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          mode: 'free_peer',
+          pricePerDay: 0,
+        },
+      });
+      expect(freeRes.mode).toBe('free_peer');
+      expect(freeRes.pricePerDay).toBe(0);
+    });
+  });
 });

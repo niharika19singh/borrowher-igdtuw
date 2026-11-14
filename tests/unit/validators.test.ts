@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   createListingSchema,
   updateListingSchema,
+  completeListingStateSchema,
+  validateMergedListingState,
   approveStudentSchema,
   setAdminRoleSchema,
   pauseListingSchema,
@@ -131,6 +133,129 @@ describe('Marketplace & Listing Input Validation', () => {
 
     const invalid = pauseListingSchema.safeParse({ listingId: '', paused: true });
     expect(invalid.success).toBe(false);
+  });
+});
+
+describe('Partial Listing Update & Complete Merged State Invariants', () => {
+  const existingRentalListing = {
+    title: 'Casio fx-991EX Calculator',
+    description: 'Engineering calculator in great condition for math practicals.',
+    categoryId: 'electronics-calculators',
+    condition: 'like-new' as const,
+    imagePaths: ['listing-images/sample.jpg'],
+    mode: 'rental' as const,
+    pricePerDay: 20,
+    depositAmount: 500,
+    minDays: 2,
+    maxDays: 7,
+    pickupZoneIds: ['admin-block-foyer'],
+    status: 'active' as const,
+  };
+
+  const existingFreePeerListing = {
+    title: 'Engineering Chemistry Lab Coat',
+    description: 'Clean white cotton lab coat for first year engineering lab.',
+    categoryId: 'lab-project-equipment',
+    condition: 'good' as const,
+    imagePaths: ['listing-images/coat.jpg'],
+    mode: 'free_peer' as const,
+    pricePerDay: 0,
+    depositAmount: 150,
+    minDays: 1,
+    maxDays: 5,
+    pickupZoneIds: ['admin-block-foyer'],
+    status: 'active' as const,
+  };
+
+  it('rejects updating minDays alone beyond existing maxDays', () => {
+    // Existing maxDays is 7. Updating minDays alone to 10 makes maxDays < minDays.
+    expect(() =>
+      validateMergedListingState(existingRentalListing, {
+        listingId: 'listing123',
+        minDays: 10,
+      })
+    ).toThrow('Maximum borrow days must be greater than or equal to minimum borrow days');
+  });
+
+  it('rejects updating maxDays below existing minDays', () => {
+    // Existing minDays is 2. Updating maxDays alone to 1 makes maxDays < minDays.
+    expect(() =>
+      validateMergedListingState(existingRentalListing, {
+        listingId: 'listing123',
+        maxDays: 1,
+      })
+    ).toThrow('Maximum borrow days must be greater than or equal to minimum borrow days');
+  });
+
+  it('rejects switching rental to free_peer without resetting price', () => {
+    // Existing pricePerDay is 20. Switching mode alone to free_peer leaves price > 0.
+    expect(() =>
+      validateMergedListingState(existingRentalListing, {
+        listingId: 'listing123',
+        mode: 'free_peer',
+      })
+    ).toThrow('Price per day must be 0 for free peer lending mode');
+  });
+
+  it('rejects updating price while mode is free_peer', () => {
+    // Existing mode is free_peer. Updating pricePerDay to 15 violates free_peer rule.
+    expect(() =>
+      validateMergedListingState(existingFreePeerListing, {
+        listingId: 'listing456',
+        pricePerDay: 15,
+      })
+    ).toThrow('Price per day must be 0 for free peer lending mode');
+  });
+
+  it('accepts valid partial updates', () => {
+    // 1. Updating title alone
+    const titleUpdate = validateMergedListingState(existingRentalListing, {
+      listingId: 'listing123',
+      title: 'Brand New Scientific Calculator fx-991EX',
+    });
+    expect(titleUpdate.title).toBe('Brand New Scientific Calculator fx-991EX');
+    expect(titleUpdate.pricePerDay).toBe(20);
+
+    // 2. Updating minDays alone within existing maxDays (minDays: 4 <= maxDays: 7)
+    const minDaysUpdate = validateMergedListingState(existingRentalListing, {
+      listingId: 'listing123',
+      minDays: 4,
+    });
+    expect(minDaysUpdate.minDays).toBe(4);
+    expect(minDaysUpdate.maxDays).toBe(7);
+
+    // 3. Updating maxDays alone above existing minDays (maxDays: 14 >= minDays: 2)
+    const maxDaysUpdate = validateMergedListingState(existingRentalListing, {
+      listingId: 'listing123',
+      maxDays: 14,
+    });
+    expect(maxDaysUpdate.maxDays).toBe(14);
+    expect(maxDaysUpdate.minDays).toBe(2);
+
+    // 4. Switching rental to free_peer while resetting price to 0
+    const modeSwitchUpdate = validateMergedListingState(existingRentalListing, {
+      listingId: 'listing123',
+      mode: 'free_peer',
+      pricePerDay: 0,
+    });
+    expect(modeSwitchUpdate.mode).toBe('free_peer');
+    expect(modeSwitchUpdate.pricePerDay).toBe(0);
+
+    // 5. Switching free_peer to rental with valid non-negative price
+    const toRentalUpdate = validateMergedListingState(existingFreePeerListing, {
+      listingId: 'listing456',
+      mode: 'rental',
+      pricePerDay: 35,
+    });
+    expect(toRentalUpdate.mode).toBe('rental');
+    expect(toRentalUpdate.pricePerDay).toBe(35);
+
+    // 6. Updating depositAmount alone
+    const depositUpdate = validateMergedListingState(existingRentalListing, {
+      listingId: 'listing123',
+      depositAmount: 600,
+    });
+    expect(depositUpdate.depositAmount).toBe(600);
   });
 });
 

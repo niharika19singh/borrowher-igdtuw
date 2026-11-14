@@ -173,7 +173,7 @@ const functions = getFunctions(app, 'asia-south1');
 
 ### 3.4 `updateListing`
 - **Region:** `asia-south1`
-- **Purpose:** Modifies an existing listing owned by caller. Direct client writes are blocked by security rules.
+- **Purpose:** Modifies an existing listing owned by caller. Direct client writes are blocked by security rules. Combines incoming fields with the existing listing and authoritatively validates the complete resulting state (enforcing `maxDays >= minDays`, `free_peer` mode requires `pricePerDay === 0`, and `rental` mode requires valid non-negative pricing).
 - **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'` (or authorized administrator). Rejects missing, undefined, or malformed account states.
 - **Parameters:** `UpdateListingInput` (includes `listingId`).
 - **Response:** Updated `Listing` object.

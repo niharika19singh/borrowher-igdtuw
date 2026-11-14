@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { db, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
-import { updateListingSchema } from '../shared/validators';
+import { updateListingSchema, validateMergedListingState } from '../shared/validators';
 import { Listing } from '../shared/types';
 
 /**
@@ -76,6 +76,9 @@ export const updateListing = onCall(
       );
     }
 
+    // Combine incoming updates with existing listing and authoritatively validate COMPLETE resulting state
+    const validatedMerged = validateMergedListingState(currentListing, input);
+
     // Validate category if updating
     if (input.categoryId && input.categoryId !== currentListing.categoryId) {
       const categoryDoc = await db.collection('categories').doc(input.categoryId).get();
@@ -108,18 +111,18 @@ export const updateListing = onCall(
       updatedAt: now,
     };
 
-    if (input.title !== undefined) updates.title = input.title;
-    if (input.description !== undefined) updates.description = input.description;
-    if (input.categoryId !== undefined) updates.categoryId = input.categoryId;
-    if (input.condition !== undefined) updates.condition = input.condition;
-    if (input.imagePaths !== undefined) updates.imagePaths = input.imagePaths;
-    if (input.mode !== undefined) updates.mode = input.mode;
-    if (input.pricePerDay !== undefined) updates.pricePerDay = input.pricePerDay;
-    if (input.depositAmount !== undefined) updates.depositAmount = input.depositAmount;
-    if (input.minDays !== undefined) updates.minDays = input.minDays;
-    if (input.maxDays !== undefined) updates.maxDays = input.maxDays;
-    if (input.pickupZoneIds !== undefined) updates.pickupZoneIds = input.pickupZoneIds;
-    if (input.status !== undefined) updates.status = input.status;
+    if (input.title !== undefined) updates.title = validatedMerged.title;
+    if (input.description !== undefined) updates.description = validatedMerged.description;
+    if (input.categoryId !== undefined) updates.categoryId = validatedMerged.categoryId;
+    if (input.condition !== undefined) updates.condition = validatedMerged.condition;
+    if (input.imagePaths !== undefined) updates.imagePaths = validatedMerged.imagePaths;
+    if (input.mode !== undefined) updates.mode = validatedMerged.mode;
+    if (input.pricePerDay !== undefined) updates.pricePerDay = validatedMerged.pricePerDay;
+    if (input.depositAmount !== undefined) updates.depositAmount = validatedMerged.depositAmount;
+    if (input.minDays !== undefined) updates.minDays = validatedMerged.minDays;
+    if (input.maxDays !== undefined) updates.maxDays = validatedMerged.maxDays;
+    if (input.pickupZoneIds !== undefined) updates.pickupZoneIds = validatedMerged.pickupZoneIds;
+    if (input.status !== undefined) updates.status = validatedMerged.status;
 
     await listingRef.update(updates);
 
