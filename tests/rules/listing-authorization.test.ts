@@ -523,5 +523,97 @@ describe('Listing Account Validation & getListing Hardening Integration Tests', 
       expect(freeRes.mode).toBe('free_peer');
       expect(freeRes.pricePerDay).toBe(0);
     });
+
+    it('enforces concurrency safety under competing updates: minDays=6 vs maxDays=4', async () => {
+      // Existing state has minDays = 2 and maxDays = 7 (from beforeEach)
+      const initialDoc = await db.collection('listings').doc(updateTestListingId).get();
+      const initialData = initialDoc.data()!;
+      expect(initialData.minDays).toBe(2);
+      expect(initialData.maxDays).toBe(7);
+
+      // Launch two competing updates concurrently inside the transaction
+      // Request A attempts to set minDays = 6 (valid against initial maxDays 7, since 7 >= 6)
+      // Request B attempts to set maxDays = 4 (valid against initial minDays 2, since 4 >= 2)
+      // If both were applied without atomic transaction isolation, maxDays (4) < minDays (6) would corrupt state!
+      const requestA = (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          minDays: 6,
+        },
+      });
+
+      const requestB = (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          maxDays: 4,
+        },
+      });
+
+      const results = await Promise.allSettled([requestA, requestB]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+
+      // Requirement: At most one incompatible update should succeed
+      expect(fulfilled.length).toBeLessThanOrEqual(1);
+      expect(rejected.length).toBeGreaterThanOrEqual(1);
+
+      // The rejected update must fail due to maxDays >= minDays validation
+      const failed = rejected[0] as PromiseRejectedResult;
+      expect(failed.reason.code).toBe('invalid-argument');
+      expect(failed.reason.message).toBe('Validation failed');
+      expect(
+        failed.reason.details?.issues?.some((i: any) =>
+          i.message.includes('Maximum borrow days must be greater than or equal to minimum borrow days')
+        )
+      ).toBe(true);
+
+      // Requirement: Final persisted state must NEVER violate maxDays >= minDays
+      const finalDoc = await db.collection('listings').doc(updateTestListingId).get();
+      const finalData = finalDoc.data()!;
+      expect(finalData.maxDays).toBeGreaterThanOrEqual(finalData.minDays);
+
+      // Verify that either Request A won (minDays: 6, maxDays: 7) OR Request B won (minDays: 2, maxDays: 4)
+      const requestAWon = finalData.minDays === 6 && finalData.maxDays === 7;
+      const requestBWon = finalData.minDays === 2 && finalData.maxDays === 4;
+      expect(requestAWon || requestBWon).toBe(true);
+    });
+
+    it('successfully processes valid concurrent non-conflicting updates', async () => {
+      // Launch two independent, compatible updates concurrently
+      // Request 1 updates title
+      // Request 2 updates depositAmount
+      const updateTitle = (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          title: 'Concurrent Updated Title',
+        },
+      });
+
+      const updateDeposit = (updateListing as any).run({
+        auth: { uid: activeStudentUid, token: { verifiedStudent: true } },
+        data: {
+          listingId: updateTestListingId,
+          depositAmount: 475,
+        },
+      });
+
+      const [res1, res2] = await Promise.all([updateTitle, updateDeposit]);
+
+      expect(res1).toBeDefined();
+      expect(res2).toBeDefined();
+
+      // Verify final persisted document in Firestore reflects both atomic updates
+      const finalDoc = await db.collection('listings').doc(updateTestListingId).get();
+      const finalData = finalDoc.data()!;
+      expect(finalData.title).toBe('Concurrent Updated Title');
+      expect(finalData.depositAmount).toBe(475);
+      expect(finalData.minDays).toBe(2);
+      expect(finalData.maxDays).toBe(7);
+      expect(finalData.maxDays).toBeGreaterThanOrEqual(finalData.minDays);
+    });
   });
 });

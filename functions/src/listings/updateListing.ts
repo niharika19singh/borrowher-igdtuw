@@ -55,81 +55,93 @@ export const updateListing = onCall(
 
     const input = updateListingSchema.parse(request.data);
     const listingRef = db.collection('listings').doc(input.listingId);
-    const listingDoc = await listingRef.get();
 
-    if (!listingDoc.exists) {
-      throw new HttpsError('not-found', `Listing '${input.listingId}' does not exist.`);
-    }
+    // Execute read-validate-write atomically within a Firestore transaction
+    const updatedListing = await db.runTransaction(async (transaction) => {
+      // 1. Read current listing inside transaction
+      const listingDoc = await transaction.get(listingRef);
 
-    const currentListing = listingDoc.data() as Listing;
-
-    // Check ownership
-    if (currentListing.ownerUid !== uid && !isAdmin) {
-      throw new HttpsError('permission-denied', 'You do not have permission to update this listing.');
-    }
-
-    // Check moderation status
-    if (currentListing.status === 'removed') {
-      throw new HttpsError(
-        'failed-precondition',
-        'This listing has been removed by moderation and cannot be modified.'
-      );
-    }
-
-    // Combine incoming updates with existing listing and authoritatively validate COMPLETE resulting state
-    const validatedMerged = validateMergedListingState(currentListing, input);
-
-    // Validate category if updating
-    if (input.categoryId && input.categoryId !== currentListing.categoryId) {
-      const categoryDoc = await db.collection('categories').doc(input.categoryId).get();
-      if (!categoryDoc.exists || categoryDoc.data()?.active !== true) {
-        throw new HttpsError('invalid-argument', `Category '${input.categoryId}' is invalid.`);
+      // 2. Perform existence, ownership and moderation checks
+      if (!listingDoc.exists) {
+        throw new HttpsError('not-found', `Listing '${input.listingId}' does not exist.`);
       }
-    }
 
-    // Validate pickup zones if updating
-    if (input.pickupZoneIds) {
-      const zoneRefs = input.pickupZoneIds.map((id) => db.collection('pickupZones').doc(id));
-      const zoneSnapshots = await db.getAll(...zoneRefs);
-      for (let i = 0; i < zoneSnapshots.length; i++) {
-        const snap = zoneSnapshots[i];
-        if (
-          !snap.exists ||
-          snap.data()?.active !== true ||
-          snap.data()?.approvalStatus !== 'approved'
-        ) {
-          throw new HttpsError(
-            'invalid-argument',
-            `Pickup zone '${input.pickupZoneIds[i]}' is not an approved campus location (currently pending review or inactive).`
-          );
+      const currentListing = listingDoc.data() as Listing;
+
+      // Check ownership
+      if (currentListing.ownerUid !== uid && !isAdmin) {
+        throw new HttpsError('permission-denied', 'You do not have permission to update this listing.');
+      }
+
+      // Check moderation status
+      if (currentListing.status === 'removed') {
+        throw new HttpsError(
+          'failed-precondition',
+          'This listing has been removed by moderation and cannot be modified.'
+        );
+      }
+
+      // 3. Build complete merged listing state using existing validateMergedListingState()
+      // 4. Validate maxDays >= minDays and all pricing invariants against transaction's latest document state
+      const validatedMerged = validateMergedListingState(currentListing, input);
+
+      // 5. Perform category and pickup-zone existence/approval reads inside the transaction when necessary
+      if (input.categoryId && input.categoryId !== currentListing.categoryId) {
+        const categoryRef = db.collection('categories').doc(input.categoryId);
+        const categoryDoc = await transaction.get(categoryRef);
+        if (!categoryDoc.exists || categoryDoc.data()?.active !== true) {
+          throw new HttpsError('invalid-argument', `Category '${input.categoryId}' is invalid.`);
         }
       }
-    }
 
-    const now = new Date().toISOString();
-    const updates: Partial<Listing> = {
-      updatedAt: now,
-    };
+      if (input.pickupZoneIds) {
+        const zoneRefs = input.pickupZoneIds.map((id) => db.collection('pickupZones').doc(id));
+        const zoneSnapshots = await transaction.getAll(...zoneRefs);
+        for (let i = 0; i < zoneSnapshots.length; i++) {
+          const snap = zoneSnapshots[i];
+          if (
+            !snap.exists ||
+            snap.data()?.active !== true ||
+            snap.data()?.approvalStatus !== 'approved'
+          ) {
+            throw new HttpsError(
+              'invalid-argument',
+              `Pickup zone '${input.pickupZoneIds[i]}' is not an approved campus location (currently pending review or inactive).`
+            );
+          }
+        }
+      }
 
-    if (input.title !== undefined) updates.title = validatedMerged.title;
-    if (input.description !== undefined) updates.description = validatedMerged.description;
-    if (input.categoryId !== undefined) updates.categoryId = validatedMerged.categoryId;
-    if (input.condition !== undefined) updates.condition = validatedMerged.condition;
-    if (input.imagePaths !== undefined) updates.imagePaths = validatedMerged.imagePaths;
-    if (input.mode !== undefined) updates.mode = validatedMerged.mode;
-    if (input.pricePerDay !== undefined) updates.pricePerDay = validatedMerged.pricePerDay;
-    if (input.depositAmount !== undefined) updates.depositAmount = validatedMerged.depositAmount;
-    if (input.minDays !== undefined) updates.minDays = validatedMerged.minDays;
-    if (input.maxDays !== undefined) updates.maxDays = validatedMerged.maxDays;
-    if (input.pickupZoneIds !== undefined) updates.pickupZoneIds = validatedMerged.pickupZoneIds;
-    if (input.status !== undefined) updates.status = validatedMerged.status;
+      // 6. Ensure every transaction read happens before any transaction write
+      // 7. Commit partial field updates using transaction.update()
+      // 8. Preserve all server-managed field protections
+      const now = new Date().toISOString();
+      const updates: Partial<Listing> = {
+        updatedAt: now,
+      };
 
-    await listingRef.update(updates);
+      if (input.title !== undefined) updates.title = validatedMerged.title;
+      if (input.description !== undefined) updates.description = validatedMerged.description;
+      if (input.categoryId !== undefined) updates.categoryId = validatedMerged.categoryId;
+      if (input.condition !== undefined) updates.condition = validatedMerged.condition;
+      if (input.imagePaths !== undefined) updates.imagePaths = validatedMerged.imagePaths;
+      if (input.mode !== undefined) updates.mode = validatedMerged.mode;
+      if (input.pricePerDay !== undefined) updates.pricePerDay = validatedMerged.pricePerDay;
+      if (input.depositAmount !== undefined) updates.depositAmount = validatedMerged.depositAmount;
+      if (input.minDays !== undefined) updates.minDays = validatedMerged.minDays;
+      if (input.maxDays !== undefined) updates.maxDays = validatedMerged.maxDays;
+      if (input.pickupZoneIds !== undefined) updates.pickupZoneIds = validatedMerged.pickupZoneIds;
+      if (input.status !== undefined) updates.status = validatedMerged.status;
 
-    return {
-      ...currentListing,
-      ...updates,
-    };
+      transaction.update(listingRef, updates);
+
+      return {
+        ...currentListing,
+        ...updates,
+      };
+    });
+
+    return updatedListing;
   } catch (error) {
     return handleCallableError(error);
   }

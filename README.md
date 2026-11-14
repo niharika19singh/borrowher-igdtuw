@@ -176,16 +176,16 @@ cd functions && npm install && cd ..
 ```
 
 ### Running Tests
-BorrowHer includes 112 automated unit, security rules, and integration tests:
+BorrowHer includes 114 automated unit, security rules, and integration tests:
 
 ```bash
 # Run unit tests (Zod validators, partial update invariants, error handling) - 44 tests
 npm run test
 
-# Run Firestore and Storage security rules and bootstrap tests against local emulators - 68 tests
+# Run Firestore and Storage security rules and bootstrap tests against local emulators - 70 tests
 npm run test:rules
 
-# Run all test suites in sequence (112 tests total)
+# Run all test suites in sequence (114 tests total)
 npm run test:all
 ```
 

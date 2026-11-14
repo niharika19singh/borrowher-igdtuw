@@ -173,7 +173,11 @@ const functions = getFunctions(app, 'asia-south1');
 
 ### 3.4 `updateListing`
 - **Region:** `asia-south1`
-- **Purpose:** Modifies an existing listing owned by caller. Direct client writes are blocked by security rules. Combines incoming fields with the existing listing and authoritatively validates the complete resulting state (enforcing `maxDays >= minDays`, `free_peer` mode requires `pricePerDay === 0`, and `rental` mode requires valid non-negative pricing).
+- **Purpose:** Modifies an existing listing owned by caller. Direct client writes are blocked by security rules. Executed inside an atomic Firestore transaction (`db.runTransaction()`) to guarantee concurrency safety:
+  - All document reads (current listing, category validation, pickup zone approvals) precede transaction writes.
+  - Combines incoming fields with the existing listing and authoritatively validates the complete resulting state on the latest transaction state (enforcing `maxDays >= minDays`, `free_peer` mode requires `pricePerDay === 0`, and `rental` mode requires valid non-negative pricing).
+  - Transaction retries re-evaluate complete merged state against latest document state under concurrent writes, preventing race condition state corruption.
+  - Partial field updates committed atomically via `transaction.update()`.
 - **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'` (or authorized administrator). Rejects missing, undefined, or malformed account states.
 - **Parameters:** `UpdateListingInput` (includes `listingId`).
 - **Response:** Updated `Listing` object.
