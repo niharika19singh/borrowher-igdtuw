@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "borrowher-igdtuw",
+    "staging": "borrowher-igdtuw-staging",
+    "production": "borrowher-igdtuw-prod"
+  }
+}

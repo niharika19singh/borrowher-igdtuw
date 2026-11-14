@@ -1,0 +1,65 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isVerifiedStudent() {
+      return isAuthenticated() && 'verifiedStudent' in request.auth.token && request.auth.token.verifiedStudent == true;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 'admin' in request.auth.token && request.auth.token.admin == true;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isValidImage() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    // =========================================================================
+    // LISTING PHOTOGRAPHS
+    // Path: listing-images/{uid}/{listingId}/{fileName}
+    // =========================================================================
+    match /listing-images/{uid}/{listingId}/{fileName} {
+      // Verified students and admins can view listing images
+      allow read: if isVerifiedStudent() || isOwner(uid) || isAdmin();
+
+      // Only the verified owner can upload an image into their UID-scoped directory
+      allow create, update: if isOwner(uid)
+        && isVerifiedStudent()
+        && isValidImage();
+
+      // Owner or admin can delete listing images
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // =========================================================================
+    // TRANSACTION EVIDENCE (Reserved for Backend Developer 2 Handover Photos)
+    // Path: booking-evidence/{bookingId}/{uid}/{fileName}
+    // =========================================================================
+    match /booking-evidence/{bookingId}/{uid}/{fileName} {
+      // Evidence is strictly private to participants or admin
+      allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
+
+      // Only authenticated user can upload their own condition proof
+      allow create: if isOwner(uid)
+        && isValidImage();
+
+      allow update, delete: if isAdmin();
+    }
+
+    // Default deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,61 @@
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { db } from '../config/firebase';
+import { handleCallableError } from '../shared/errors';
+import { Listing, PublicProfile } from '../shared/types';
+
+export interface GetListingResponse {
+  listing: Listing;
+  lenderProfile: PublicProfile | null;
+}
+
+/**
+ * Retrieves detailed listing information along with the lender's public reputation summary.
+ */
+export const getListing = onCall(async (request): Promise<GetListingResponse> => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Caller must be authenticated');
+  }
+
+  const listingId = String(request.data?.listingId || '').trim();
+  if (!listingId) {
+    throw new HttpsError('invalid-argument', 'Listing ID is required');
+  }
+
+  try {
+    const listingDoc = await db.collection('listings').doc(listingId).get();
+    if (!listingDoc.exists) {
+      throw new HttpsError('not-found', `Listing '${listingId}' does not exist`);
+    }
+
+    const listing = listingDoc.data() as Listing;
+    const isOwner = request.auth.uid === listing.ownerUid;
+    const isAdmin = request.auth.token.admin === true;
+    const isVerified = request.auth.token.verifiedStudent === true;
+
+    // Check visibility permissions
+    if (listing.status !== 'active' && !isOwner && !isAdmin) {
+      throw new HttpsError(
+        'permission-denied',
+        'This listing is not currently active on the campus marketplace.'
+      );
+    }
+
+    if (!isVerified && !isOwner && !isAdmin) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only verified IGDTUW students can access full marketplace item details.'
+      );
+    }
+
+    // Fetch lender's public profile
+    const publicProfileDoc = await db.collection('publicProfiles').doc(listing.ownerUid).get();
+    const lenderProfile = publicProfileDoc.exists ? (publicProfileDoc.data() as PublicProfile) : null;
+
+    return {
+      listing,
+      lenderProfile,
+    };
+  } catch (error) {
+    return handleCallableError(error);
+  }
+});
