@@ -5,7 +5,7 @@
 > **Target Users:** Verified students and designated administrators of Indira Gandhi Delhi Technical University for Women (IGDTUW)  
 > **Architecture Version:** 2.0  
 > **Frontend Hosting:** Vercel (React + Vite + TypeScript + Tailwind CSS)  
-> **Cloud Backend:** Firebase Authentication, Cloud Firestore, Cloud Storage, Cloud Functions 2nd Gen (Node.js + TypeScript)  
+> **Cloud Backend:** Firebase Authentication, Cloud Firestore, Cloud Storage, Cloud Functions 2nd Gen (Node.js 22 + TypeScript, region: asia-south1)  
 > **Repository:** [https://github.com/niharika19singh/borrowher-igdtuw](https://github.com/niharika19singh/borrowher-igdtuw)
 
 ---
@@ -155,7 +155,7 @@ borrowher-igdtuw/
 ## 6. Local Setup & Testing Guide
 
 ### Prerequisites
-- **Node.js:** v20+ (tested on Node v25.5.0)
+- **Node.js:** v20+ for local development; Cloud Functions runtime is pinned to **Node.js 22** (`engines: { "node": "22" }`)
 - **Java:** JDK 21+ (required for Firebase Emulator Suite)
 - **Firebase CLI:** Included locally via project dependencies
 
@@ -176,16 +176,16 @@ cd functions && npm install && cd ..
 ```
 
 ### Running Tests
-BorrowHer includes 58 automated unit and rules integration tests:
+BorrowHer includes 69 automated unit, security rules, and integration tests:
 
 ```bash
-# Run unit tests (Zod validators, domain models, error handling)
+# Run unit tests (Zod validators, domain models, error handling, function options) - 30 tests
 npm run test
 
-# Run Firestore and Storage security rules tests against local emulators
+# Run Firestore and Storage security rules and bootstrap tests against local emulators - 39 tests
 npm run test:rules
 
-# Run all test suites in sequence
+# Run all test suites in sequence (69 tests total)
 npm run test:all
 ```
 
@@ -207,19 +207,19 @@ npm run emulators:start
 - Firestore: `localhost:8080`
 - Auth: `localhost:9099`
 - Storage: `localhost:9199`
-- Functions: `localhost:5001`
+- Functions: `localhost:5001` (configured for region `asia-south1`)
 
-### Seeding Catalog & Approved Campus Pickup Zones
+### Seeding Catalog & Campus Pickup Zones
 With emulators running (or connected to a test project):
 ```bash
 # Seed initial 7 marketplace categories
 npm run seed:categories
 
-# Seed approved IGDTUW campus exchange points
+# Seed proposed IGDTUW campus exchange points (seeded as pending_review, active: false)
 npm run seed:pickup-zones
 
-# Provision root administrator account with admin claims
-npm run bootstrap:admin
+# Securely elevate an existing verified account to platform administrator
+npm run bootstrap:admin -- --email verified-admin@igdtuw.ac.in --confirm
 ```
 
 ---
@@ -229,12 +229,12 @@ npm run bootstrap:admin
 When preparing for live staging or production deployment:
 
 1. **Create Firebase Project:** In the [Firebase Console](https://console.firebase.google.com), create a new project (e.g. `borrowher-igdtuw-prod`).
-2. **Select Database Region:** Choose a supported Indian cloud region close to IGDTUW (e.g. `asia-south1` Mumbai). *Note: Region selection is permanent.*
+2. **Select Database & Functions Region:** Choose `asia-south1` (Mumbai). All Cloud Functions 2nd Gen and Cloud Firestore databases must reside in `asia-south1` to match the client configuration `getFunctions(app, 'asia-south1')`.
 3. **Enable Services:**
    - **Authentication:** Enable Email/Password provider.
-   - **Cloud Firestore:** Initialize in Production Mode.
+   - **Cloud Firestore:** Initialize in Production Mode (`asia-south1`).
    - **Cloud Storage:** Create default bucket.
-   - **Cloud Functions:** Ensure Blaze plan is enabled for 2nd Gen functions.
+   - **Cloud Functions:** Ensure Blaze plan is enabled for 2nd Gen functions on Node.js 22.
 4. **Deploy Security Rules & Indexes:**
    ```bash
    firebase deploy --only firestore:rules,firestore:indexes,storage
@@ -243,7 +243,7 @@ When preparing for live staging or production deployment:
    ```bash
    firebase deploy --only functions
    ```
-6. **Bootstrap Administrator:** Run `npm run bootstrap:admin` with service account credentials to provision the root platform administrator safely.
+6. **Bootstrap Administrator:** Run `npm run bootstrap:admin -- --email <authorized_admin_email> --confirm` with service account credentials to safely provision the platform administrator (requires pre-registered account with verified email).
 7. **Configure Vercel:** Set environment variables from `.env.example` (`VITE_FIREBASE_*`) in the Vercel dashboard.
 
 ---
@@ -251,13 +251,21 @@ When preparing for live staging or production deployment:
 ## 8. Integration Instructions for Team Members
 
 - **Frontend Developer 1:** Consult [`docs/backend-developer-1-contract.md`](docs/backend-developer-1-contract.md) for listing fields, status enums, and required Firestore composite query structures.
+  - **Listing Mutations:** Note that direct client-side listing creation/updates/deletions are denied by security rules (`allow create, update, delete: if false;`). Use callable Cloud Functions `createListing`, `updateListing`, and `pauseListing` in region `asia-south1`.
+  - **Pickup Zones:** Only active and approved pickup zones (`active: true`, `approvalStatus: 'approved'`) are accepted by `createListing`.
 - **Frontend Developer 2:** Use callable function contracts (`ensureUserProfile`, `approveStudent`, `setAdminRole`, `adminModerateListing`) and shared models in `functions/src/shared/types.ts`.
-- **Backend Developer 2:** Date-slot reservation locks (`bookingSlots`), booking lifecycle (`bookings`), handover confirmations, and deposit simulation integrate seamlessly with the existing security foundation. All `bookingSlots` and `bookings` paths are configured with secure default-deny rules awaiting your Cloud Functions triggers.
+  - Always initialize Functions with: `getFunctions(app, 'asia-south1')`.
+- **Backend Developer 2:** Date-slot reservation locks (`bookingSlots`), booking lifecycle (`bookings`), handover confirmations, and deposit simulation integrate seamlessly with the existing security foundation:
+  - All `bookingSlots` and `bookings` paths are configured with secure default-deny rules awaiting your Cloud Functions triggers.
+  - The `booking-evidence/{bookingId}/{uid}/{fileName}` Storage path is currently locked down (`allow read, write: if false;`) until your bilateral borrower/lender participant validation is implemented.
 
 ---
 
 ## 9. Security & Privacy Guarantees
 
 - **No Student Data Leaks:** Public profiles strictly omit student email addresses, phone numbers, hostel room numbers, and verification documents.
-- **Approved Public Points Only:** Pickup zones are restricted to officially designated public campus locations (Library, Admin Foyer, CSE Block Lobby). Private residence and room addresses are prohibited.
+- **Direct Listing Mutation Lockdown:** Direct client writes to `listings` are completely blocked; all mutations must pass server-side Zod validation and account-status verification.
+- **Real-Time Suspended-Account Enforcement:** Suspended or rejected students are immediately blocked from marketplace reads/writes via real-time Firestore rule checks and instant Auth refresh token revocation.
+- **Approved Public Points Only:** Pickup zones must be formally approved (`approvalStatus: 'approved'`, `active: true`) by an administrator. Unverified opening times or monitoring claims are removed. Private residence and room addresses are prohibited.
+- **Storage Lockdown:** Item photos require verified student authentication and MIME/size validation. Booking evidence storage is locked pending Backend 2 participant logic.
 - **Client Elevation Prevented:** Custom claims (`admin`, `verifiedStudent`) and user verification status are protected by server-side verification and can never be modified through client-side writes.

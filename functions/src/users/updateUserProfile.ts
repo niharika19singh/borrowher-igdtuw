@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db } from '../config/firebase';
+import { db, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { updateUserProfileSchema } from '../shared/validators';
 import { UserProfile } from '../shared/types';
@@ -8,7 +8,7 @@ import { UserProfile } from '../shared/types';
  * Updates elective student profile fields (displayName, programme, year).
  * Strictly forbids client-side mutation of verificationStatus, accountStatus, email, or uid.
  */
-export const updateUserProfile = onCall(async (request) => {
+export const updateUserProfile = onCall({ region: FUNCTIONS_REGION }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated to update profile');
   }

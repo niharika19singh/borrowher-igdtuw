@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db, auth } from '../config/firebase';
+import { db, auth, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { UserProfile, PublicProfile, EnsureUserProfileResponse } from '../shared/types';
 
@@ -12,7 +12,9 @@ import { UserProfile, PublicProfile, EnsureUserProfileResponse } from '../shared
  * - Creates private profile in `users/{uid}` and public profile in `publicProfiles/{uid}`.
  * - Idempotently returns existing profiles if already initialized.
  */
-export const ensureUserProfile = onCall(async (request): Promise<EnsureUserProfileResponse> => {
+export const ensureUserProfile = onCall(
+  { region: FUNCTIONS_REGION },
+  async (request): Promise<EnsureUserProfileResponse> => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Caller must be authenticated to initialize profile');
   }

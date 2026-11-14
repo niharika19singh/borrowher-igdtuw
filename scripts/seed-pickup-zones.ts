@@ -12,69 +12,84 @@ if (admin.apps.length === 0) {
 
 const db = admin.firestore();
 
+/**
+ * Proposed initial campus pickup locations for BorrowHer IGDTUW.
+ *
+ * Governance & Safety Policy:
+ * - All proposed locations are initialized with `active: false` and `approvalStatus: 'pending_review'`.
+ * - Locations must NOT be represented as officially confirmed or university-monitored without administrative validation.
+ * - Free-form hostel room addresses and unverified private residences are strictly prohibited.
+ * - Students must observe campus rules; university hostel access rules must be strictly respected.
+ */
 export const INITIAL_PICKUP_ZONES: PickupZone[] = [
   {
     zoneId: 'admin-block-foyer',
     label: 'Administrative Block Foyer',
     campusArea: 'Central Campus',
-    active: true,
-    guidance: 'Meet near the ground floor visitor inquiry desk inside the Admin building. Well-lit and monitored public area.',
-    accessNote: 'Open during regular academic hours (9:00 AM – 5:30 PM, Monday to Friday).',
+    active: false, // Inactive until administrative validation
+    approvalStatus: 'pending_review',
+    guidance: 'Proposed central public handover spot inside the Admin building ground floor foyer.',
+    accessNote: 'Must be scheduled during regular college working hours. Private offices and restricted zones are off-limits.',
   },
   {
     zoneId: 'central-library-entry',
     label: 'Central Library Main Entrance',
     campusArea: 'Academic Zone',
-    active: true,
-    guidance: 'Meet near the main glass entrance / outdoor benches facing the library lawn. Ideal for book and calculator exchanges.',
-    accessNote: 'Accessible during library operational hours (8:30 AM – 7:00 PM).',
+    active: false,
+    approvalStatus: 'pending_review',
+    guidance: 'Proposed public exchange point outside the main library glass entrance facing the lawn.',
+    accessNote: 'Subject to standard campus library premises guidelines. Maintain academic quiet zones.',
   },
   {
     zoneId: 'it-department-gf',
     label: 'IT & CSE Block Ground Floor Lobby',
     campusArea: 'Departmental Buildings',
-    active: true,
-    guidance: 'Near the department notice boards on the ground floor foyer. Suitable for lab coats and hardware/microcontroller handovers.',
-    accessNote: 'Open during lab and class schedules.',
+    active: false,
+    approvalStatus: 'pending_review',
+    guidance: 'Proposed departmental pickup area in the ground floor lobby near public notice boards.',
+    accessNote: 'Valid only during scheduled class/lab hours. Lab interior spaces cannot be used as exchange points.',
   },
   {
     zoneId: 'main-gate-reception',
-    label: 'Kashmere Gate Main Entrance Reception',
-    campusArea: 'Campus Perimeter & Security',
-    active: true,
-    guidance: 'Meet near the security reception booth inside the main campus gate. Suitable for day scholars arriving or leaving campus.',
-    accessNote: 'Monitored 24/7 security area; day access recommended for exchanges.',
+    label: 'Kashmere Gate Campus Main Gate Area',
+    campusArea: 'Campus Perimeter',
+    active: false,
+    approvalStatus: 'pending_review',
+    guidance: 'Proposed daytime exchange location near the main gate visitor waiting area.',
+    accessNote: 'Daytime student access only. Must not obstruct campus security or vehicle entry.',
   },
   {
     zoneId: 'mechanical-workshop-entry',
-    label: 'Mechanical Engineering Workshop Entrance',
+    label: 'Mechanical Workshop Building Entrance',
     campusArea: 'Workshop & Laboratory Area',
-    active: true,
-    guidance: 'Outside the main roller shutter entrance of the workshop complex. Recommended for drafting drafters and heavy project tools.',
-    accessNote: 'Accessible during workshop and practical hours.',
+    active: false,
+    approvalStatus: 'pending_review',
+    guidance: 'Proposed outdoor area adjacent to the mechanical workshop main entrance.',
+    accessNote: 'Must be scheduled during operational workshop hours. Strictly observe lab safety boundaries.',
   },
   {
     zoneId: 'audi-plaza',
-    label: 'Auditorium Plaza & Open Lawn',
+    label: 'Auditorium Plaza Open Lawn',
     campusArea: 'Student Common Areas',
-    active: true,
-    guidance: 'Open seating area in front of the campus auditorium. Open public space suitable for general item handovers.',
-    accessNote: 'Daytime access during college working days.',
+    active: false,
+    approvalStatus: 'pending_review',
+    guidance: 'Proposed open public common area in the outdoor plaza in front of the auditorium.',
+    accessNote: 'Outdoor public space; recommended for daytime handover during working college days.',
   },
 ];
 
 export async function seedPickupZones() {
-  console.log('Seeding approved IGDTUW campus pickup zones into Firestore...');
+  console.log('Seeding proposed IGDTUW campus pickup zones (pending_review) into Firestore...');
   const batch = db.batch();
 
   for (const zone of INITIAL_PICKUP_ZONES) {
     const docRef = db.collection('pickupZones').doc(zone.zoneId);
     batch.set(docRef, zone, { merge: true });
-    console.log(`  ✓ Prepared pickup point: ${zone.label} (${zone.zoneId})`);
+    console.log(`  ✓ Prepared proposed pickup point: ${zone.label} (${zone.zoneId}) [pending_review]`);
   }
 
   await batch.commit();
-  console.log(`✅ Successfully seeded ${INITIAL_PICKUP_ZONES.length} approved campus pickup zones.`);
+  console.log(`✅ Successfully seeded ${INITIAL_PICKUP_ZONES.length} proposed campus pickup zones (all pending_review, active=false).`);
 }
 
 if (require.main === module || process.argv[1]?.endsWith('seed-pickup-zones.ts')) {

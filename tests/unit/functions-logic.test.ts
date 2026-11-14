@@ -87,3 +87,66 @@ describe('User Profile Domain Invariants', () => {
     expect((publicProf as any).verificationDocs).toBeUndefined();
   });
 });
+
+describe('Cloud Functions 2nd Gen Deployment Region Configuration', () => {
+  it('configures asia-south1 region across all exported callable Cloud Functions', async () => {
+    // Import all exported functions from entrypoint
+    const functionsModule = await import('../../functions/src/index.js');
+
+    const expectedFunctions = [
+      'ensureUserProfile',
+      'updateUserProfile',
+      'approveStudent',
+      'setAdminRole',
+      'adminModerateListing',
+      'adminManageCategory',
+      'createListing',
+      'updateListing',
+      'pauseListing',
+      'getListing',
+    ];
+
+    for (const fnName of expectedFunctions) {
+      const fn = (functionsModule as any)[fnName];
+      expect(fn, `Function ${fnName} should be exported`).toBeDefined();
+      expect(typeof fn, `Function ${fnName} should be callable`).toBe('function');
+      // In firebase-functions/v2, onCall wraps functions and defines __endpoint metadata
+      if (fn.__endpoint) {
+        expect(
+          fn.__endpoint.region,
+          `Function ${fnName} must be configured for asia-south1 region`
+        ).toContain('asia-south1');
+      }
+    }
+  });
+});
+
+describe('Admin Bootstrap Security Invariants', () => {
+  it('rejects bootstrap when no email or UID target is provided', async () => {
+    const { bootstrapAdmin } = await import('../../scripts/bootstrap-admin.js');
+    await expect(bootstrapAdmin({ confirmed: true })).rejects.toThrow(
+      'Administrator target identifier is required'
+    );
+  });
+
+  it('rejects bootstrap when explicit confirmation flag is missing', async () => {
+    const { bootstrapAdmin } = await import('../../scripts/bootstrap-admin.js');
+    await expect(
+      bootstrapAdmin({ targetEmail: 'admin@igdtuw.ac.in', confirmed: false })
+    ).rejects.toThrow('Elevation confirmation is missing');
+  });
+});
+
+describe('Pickup Zone Safety and Status Invariants', () => {
+  it('ensures all seeded campus pickup locations are inactive and pending review by default', async () => {
+    const { INITIAL_PICKUP_ZONES } = await import('../../scripts/seed-pickup-zones.js');
+
+    expect(INITIAL_PICKUP_ZONES.length).toBeGreaterThan(0);
+    for (const zone of INITIAL_PICKUP_ZONES) {
+      expect(zone.active).toBe(false);
+      expect(zone.approvalStatus).toBe('pending_review');
+      expect(zone.guidance).not.toContain('24/7');
+      expect(zone.accessNote).toBeDefined();
+    }
+  });
+});

@@ -138,13 +138,16 @@ export interface Category {
 // PICKUP ZONES (Firestore: pickupZones/{zoneId})
 // =============================================================================
 
+export type PickupZoneApprovalStatus = 'pending_review' | 'approved' | 'rejected';
+
 export interface PickupZone {
   zoneId: string;
   label: string;
   campusArea: string;
-  active: boolean;
-  guidance: string;
-  accessNote: string;
+  active: boolean; // Must be false until validated by campus administrator
+  approvalStatus: PickupZoneApprovalStatus; // Explicitly 'pending_review' until validated
+  guidance: string; // Neutral, unverified campus guidance (no unverified opening hours or security claims)
+  accessNote: string; // Safety guidance reminding students to observe campus and hostel boundaries
 }
 
 // =============================================================================

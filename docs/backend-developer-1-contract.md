@@ -1,7 +1,7 @@
 # BorrowHer — Backend Developer 1 Integration Contract
 
-**Document Version:** 2.0  
-**Backend Developer 1 (Niharika Singh):** Firebase Foundation, Auth, Verification, User Profiles, Marketplace Listings, Categories, Pickup Zones, Rules & Storage.  
+**Document Version:** 2.1 (Security Hardened & Region Pinned)  
+**Backend Developer 1 (Niharika Singh):** Firebase Foundation, Auth, Verification, User Profiles, Marketplace Listings, Categories, Pickup Zones, Security Rules & Storage.  
 **Audience:** Frontend Developer 1 (Marketplace), Frontend Developer 2 (Workflows & Identity), Backend Developer 2 (Transactions & Concurrency).
 
 ---
@@ -10,15 +10,17 @@
 
 | Module | Owner | Status in this Delivery |
 |---|---|---|
-| Firebase Project Foundation & Emulator Config | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
+| Firebase Foundation & Region Configuration (`asia-south1`) | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
 | Auth & Student Verification Lifecycle | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
 | User Profile & Public Profile Collections | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
-| Admin Claims Provisioning & Bootstrap | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
+| Secure Admin Bootstrap (`--confirm` & verified email) | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
 | Marketplace Listings & Category Catalog | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
-| Campus Pickup Zones Data Model | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
-| Firestore & Storage Security Rules | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
+| Pickup Zones Model (`pending_review` & `active: false`) | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
+| Firestore Rules (Mutation Lock on Listings & Suspended User Gate) | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
+| Cloud Storage Rules (`booking-evidence` lockdown) | **Backend Dev 1 (Niharika)** | **Implemented & Verified** |
 | Booking Concurrency, Slot Locks & State Machine | Backend Dev 2 | *Reserved (Not implemented in this scope)* |
 | Handover & Return Bilateral Confirmations | Backend Dev 2 | *Reserved (Not implemented in this scope)* |
+| Booking Evidence Participant Validation | Backend Dev 2 | *Reserved (Not implemented in this scope)* |
 | Emergency Essentials Offers & Reminder Cron | Backend Dev 2 | *Reserved (Not implemented in this scope)* |
 | Deposit Ledger & Simulated Demo Payments | Backend Dev 2 | *Reserved (Not implemented in this scope)* |
 | Marketplace & Landing Page UI | Frontend Dev 1 | *Reserved (Not implemented in this scope)* |
@@ -26,10 +28,11 @@
 
 ---
 
-## 2. Firestore Collections & Document Schemas
+## 2. Firestore Collections & Security Rules
 
 ### 2.1 `users/{uid}` (Private User Profile)
-- **Access Rule:** Read permitted only for authenticated document owner (`request.auth.uid == uid`) or platform admin (`token.admin == true`). Client direct create/delete is forbidden.
+- **Access Rule:** Read permitted only for authenticated document owner (`request.auth.uid == uid`) or platform admin (`token.admin == true`). Client creation/deletion forbidden.
+- **Elective Profile Updates:** Students can update `displayName`, `programme`, and `year`. Security-critical fields (`verificationStatus`, `accountStatus`, `email`, `uid`) cannot be altered from the client.
 - **TypeScript Interface:** `UserProfile`
 
 ```typescript
@@ -48,8 +51,9 @@ export interface UserProfile {
 ```
 
 ### 2.2 `publicProfiles/{uid}` (Public Student Profile)
-- **Access Rule:** Readable by verified IGDTUW students (`token.verifiedStudent == true`) or admins. Writes strictly forbidden from client.
+- **Access Rule:** Readable by verified IGDTUW students (`token.verifiedStudent == true` AND `users/{uid}.accountStatus == 'active'`) or admins. All client writes forbidden (`allow write: if isAdmin();`).
 - **Privacy Guarantee:** NEVER contains phone numbers, email addresses, hostel room numbers, or verification documents.
+- **Reputation Policy:** Initial accounts start with zero completed borrows and neutral rating (`averageRating: 0.0, totalReviews: 0`). Fabricated 5-star ratings are prohibited.
 - **TypeScript Interface:** `PublicProfile`
 
 ```typescript
@@ -60,14 +64,17 @@ export interface PublicProfile {
   verificationBadge: boolean;          // true when student is approved
   completedBorrowCount: number;        // Incremented upon completed bookings
   ratingSummary: {
-    averageRating: number;             // e.g. 4.8
-    totalReviews: number;              // e.g. 12
+    averageRating: number;             // Neutral 0.0 on creation
+    totalReviews: number;              // 0 on creation
   };
 }
 ```
 
 ### 2.3 `listings/{listingId}` (Marketplace Items)
-- **Access Rule:** Active listings readable by verified students. Inactive/draft listings readable only by listing owner or admin.
+- **Read Access:** Active listings (`status == 'active'`) are readable by verified, active students (`isVerifiedStudent()`). Inactive/draft/paused listings are readable only by the listing owner or platform administrator.
+- **Write Access (Critical Security Hardening):** Direct client-side listing creation, updating, and deletion are **strictly denied** (`allow create, update, delete: if false;`).
+  - **All mutations MUST go through trusted Cloud Functions:** `createListing`, `updateListing`, `pauseListing`, `adminModerateListing`.
+  - The Firebase Admin SDK in Cloud Functions bypasses client security rules while enforcing rigorous server-side validation and current account status checks.
 - **TypeScript Interface:** `Listing`
 
 ```typescript
@@ -98,7 +105,7 @@ export interface Listing {
 
 ### 2.4 `categories/{categoryId}` (Catalog Taxonomy)
 - **Access Rule:** Readable by all authenticated users. Modifiable only by administrators.
-- **Initial Categories Seeded:**
+- **Active Categories:**
   1. `academic-books`: Academic & Books
   2. `electronics-calculators`: Electronics & Calculators
   3. `lab-project-equipment`: Lab & Project Equipment
@@ -107,119 +114,100 @@ export interface Listing {
   6. `weather-daily`: Weather & Daily Essentials
   7. `other`: Other
 
-### 2.5 `pickupZones/{zoneId}` (Approved Campus Locations)
+### 2.5 `pickupZones/{zoneId}` (Campus Exchange Points)
 - **Access Rule:** Readable by verified students. Modifiable only by administrators.
-- **Approved Public Points Seeded:**
-  1. `admin-block-foyer`: Administrative Block Foyer (Central Campus)
-  2. `central-library-entry`: Central Library Main Entrance (Academic Zone)
-  3. `it-department-gf`: IT & CSE Block Ground Floor Lobby (Departmental)
-  4. `main-gate-reception`: Kashmere Gate Main Entrance Security Booth (Perimeter)
-  5. `mechanical-workshop-entry`: Mechanical Engineering Workshop Entrance
-  6. `audi-plaza`: Auditorium Plaza & Open Lawn (Common Areas)
+- **Approval & Safety Policy:**
+  - All proposed campus points are initialized with `active: false` and `approvalStatus: 'pending_review'`.
+  - Inactive locations **cannot** be used to publish listings. `createListing` checks that all selected pickup zones have `active === true && approvalStatus === 'approved'`.
+  - University hostel room addresses and private residences are strictly prohibited.
+  - Students must observe academic working hours and campus safety boundaries.
+
+```typescript
+export type PickupZoneApprovalStatus = 'pending_review' | 'approved' | 'rejected';
+
+export interface PickupZone {
+  zoneId: string;
+  label: string;
+  campusArea: string;
+  active: boolean;                     // false until verified by administrator
+  approvalStatus: PickupZoneApprovalStatus; // 'pending_review' | 'approved' | 'rejected'
+  guidance: string;                    // Neutral safety guidance
+  accessNote: string;                  // Campus boundary & hostel restriction notice
+}
+```
 
 ---
 
 ## 3. Firebase Cloud Functions (2nd Gen) API Contract
 
-All backend functions are callable via the Firebase Client SDK:
+All backend Cloud Functions are deployed to the **`asia-south1` (Mumbai)** region.  
+Frontend developers **MUST** initialize the Firebase Functions SDK with this explicit region:
+
 ```typescript
 import { getFunctions, httpsCallable } from 'firebase/functions';
-const functions = getFunctions(app, 'asia-south1'); // or local emulator origin
+const functions = getFunctions(app, 'asia-south1');
 ```
 
 ### 3.1 `ensureUserProfile`
+- **Region:** `asia-south1`
 - **Purpose:** Idempotently initializes private `users/{uid}` and public `publicProfiles/{uid}` documents upon sign-up or first app launch.
-- **Auth Required:** Yes (Authenticated user).
-- **Parameters:** None (UID extracted from auth token).
-- **Response:**
-```typescript
-{
-  user: UserProfile;
-  publicProfile: PublicProfile;
-  isNewUser: boolean;
-}
-```
+- **Auth Required:** Authenticated student.
+- **Response:** `{ user: UserProfile, publicProfile: PublicProfile, isNewUser: boolean }`
 
 ### 3.2 `updateUserProfile`
-- **Purpose:** Allows a student to update elective academic details without exposing administrative fields.
-- **Auth Required:** Yes.
-- **Parameters:**
-```typescript
-{
-  displayName?: string; // 2–100 chars
-  programme?: string;   // e.g. "B.Tech CSE"
-  year?: number | string; // e.g. 2
-}
-```
+- **Region:** `asia-south1`
+- **Purpose:** Allows student to update elective academic details without exposing administrative fields.
+- **Auth Required:** Authenticated student with `accountStatus === 'active'`.
+- **Parameters:** `{ displayName?: string, programme?: string, year?: number | string }`
 - **Response:** `{ success: true, uid: string, updates: Partial<UserProfile> }`
 
 ### 3.3 `createListing`
+- **Region:** `asia-south1`
 - **Purpose:** Creates and publishes a new marketplace item.
-- **Auth Required:** Yes, caller MUST be a **verified student** (`token.verifiedStudent === true` or verified in database).
-- **Parameters:**
-```typescript
-{
-  title: string;              // 3–100 chars
-  description: string;        // 10–2000 chars
-  categoryId: string;         // Must be active category
-  condition: 'new' | 'like-new' | 'good' | 'fair';
-  imagePaths: string[];       // Max 5 paths
-  mode: 'free_peer' | 'rental';
-  pricePerDay: number;        // Must be 0 if mode === 'free_peer'
-  depositAmount: number;      // >= 0
-  minDays: number;            // >= 1
-  maxDays: number;            // >= minDays and <= 30
-  pickupZoneIds: string[];    // Array of approved pickup zone IDs
-  status?: 'active' | 'draft';
-}
-```
+- **Auth Required:** Authenticated student. Authoritatively verifies against Firestore that caller has `accountStatus === 'active'` and `verificationStatus === 'verified'`.
+- **Validation:** Enforces active category and verified pickup zones (`approvalStatus === 'approved' && active === true`).
+- **Parameters:** `CreateListingInput`
 - **Response:** Created `Listing` object.
 
 ### 3.4 `updateListing`
-- **Purpose:** Modifies an existing listing owned by the caller.
-- **Auth Required:** Yes, caller MUST be the listing owner.
+- **Region:** `asia-south1`
+- **Purpose:** Modifies an existing listing owned by caller.
+- **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'`.
 - **Parameters:** `UpdateListingInput` (includes `listingId`).
 - **Response:** Updated `Listing` object.
 
 ### 3.5 `pauseListing`
+- **Region:** `asia-south1`
 - **Purpose:** Toggles listing between active and paused states.
-- **Auth Required:** Yes, caller MUST be owner or admin.
+- **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'`.
 - **Parameters:** `{ listingId: string, paused: boolean }`
 - **Response:** `{ success: true, listingId: string, status: 'paused' | 'active' }`
 
 ### 3.6 `getListing`
+- **Region:** `asia-south1`
 - **Purpose:** Retrieves complete listing details along with lender public reputation.
-- **Auth Required:** Yes.
+- **Auth Required:** Verified student or listing owner/admin.
 - **Parameters:** `{ listingId: string }`
-- **Response:**
-```typescript
-{
-  listing: Listing;
-  lenderProfile: PublicProfile | null;
-}
-```
+- **Response:** `{ listing: Listing, lenderProfile: PublicProfile | null }`
 
 ### 3.7 `approveStudent` (Admin Only)
-- **Purpose:** Approves or rejects student verification requests and manages custom claims.
+- **Region:** `asia-south1`
+- **Purpose:** Approves, rejects, or suspends student verification.
 - **Auth Required:** Admin (`token.admin === true`).
-- **Parameters:**
-```typescript
-{
-  uid: string;
-  status: 'verified' | 'rejected' | 'suspended';
-  reason?: string;
-}
-```
+- **Session Revocation:** When an account is suspended (`status === 'suspended'`), the function immediately calls `auth.revokeRefreshTokens(uid)` to invalidate all active sessions.
+- **Parameters:** `{ uid: string, status: 'verified' | 'rejected' | 'suspended', reason?: string }`
 - **Response:** `{ success: true, uid: string, verificationStatus: string, claimsUpdated: boolean }`
 
 ### 3.8 `setAdminRole` (Admin Only)
-- **Purpose:** Promotes or demotes platform administrators.
+- **Region:** `asia-south1`
+- **Purpose:** Promotes or demotes platform administrators. Self-demotion is blocked.
 - **Auth Required:** Admin (`token.admin === true`).
 - **Parameters:** `{ targetUid: string, admin: boolean }`
 - **Response:** `{ success: true, targetUid: string, admin: boolean }`
 
 ### 3.9 `adminModerateListing` (Admin Only)
-- **Purpose:** Moderates/removes inappropriate item listings and writes audit log.
+- **Region:** `asia-south1`
+- **Purpose:** Moderates/removes inappropriate item listings and writes an audit log.
 - **Auth Required:** Admin (`token.admin === true`).
 - **Parameters:** `{ listingId: string, status: 'removed' | 'active', moderationReason: string }`
 - **Response:** `{ success: true, listingId: string, status: string }`
@@ -231,37 +219,22 @@ const functions = getFunctions(app, 'asia-south1'); // or local emulator origin
 | Media Type | Storage Path Pattern | Max Size | Allowed MIME Types | Access Rules |
 |---|---|---|---|---|
 | Listing Images | `listing-images/{uid}/{listingId}/{fileName}` | 5 MB | `image/jpeg`, `image/png`, `image/webp` | Upload: Verified owner only. Read: Verified students. |
-| Transaction Evidence | `booking-evidence/{bookingId}/{uid}/{fileName}` | 5 MB | `image/jpeg`, `image/png`, `image/webp` | Upload: Participant only. Read: Participants & Admin. |
+| Transaction Evidence | `booking-evidence/{bookingId}/{uid}/{fileName}` | 5 MB | N/A | **Locked down (`allow read, write: if false;`).** Reserved for Backend Dev 2 participant authorization. |
 
 ---
 
-## 5. Client Queries & Firestore Composite Indexes
+## 5. Administrator Provisioning Protocol (`bootstrap-admin.ts`)
 
-Frontend Developer 1 should use the following Firestore queries for the marketplace view:
+To prevent unauthorized elevation, no public endpoint can grant the initial admin role. Administrator bootstrapping uses a restricted CLI procedure:
 
-1. **Browse All Active Listings:**
-   ```typescript
-   query(collection(db, 'listings'), where('status', '==', 'active'), orderBy('createdAt', 'desc'))
-   ```
-2. **Filter by Category:**
-   ```typescript
-   query(collection(db, 'listings'), where('status', '==', 'active'), where('categoryId', '==', selectedCat), orderBy('createdAt', 'desc'))
-   ```
-3. **Filter by Condition:**
-   ```typescript
-   query(collection(db, 'listings'), where('status', '==', 'active'), where('condition', '==', selectedCond), orderBy('createdAt', 'desc'))
-   ```
-4. **Filter by Mode:**
-   ```typescript
-   query(collection(db, 'listings'), where('status', '==', 'active'), where('mode', '==', selectedMode), orderBy('createdAt', 'desc'))
-   ```
-5. **Filter by Pickup Zone:**
-   ```typescript
-   query(collection(db, 'listings'), where('status', '==', 'active'), where('pickupZoneIds', 'array-contains', selectedZone), orderBy('createdAt', 'desc'))
-   ```
-6. **Owner's Listings (Lender Dashboard):**
-   ```typescript
-   query(collection(db, 'listings'), where('ownerUid', '==', currentUid), orderBy('createdAt', 'desc'))
-   ```
+```bash
+# Provisioning requires an existing, email-verified Firebase Auth account and explicit confirmation:
+npm run bootstrap:admin -- --email faculty-admin@igdtuw.ac.in --confirm
+```
 
-*Note: All corresponding composite indexes are already declared in `firestore.indexes.json`.*
+**Security Rules Enforced by Bootstrap Script:**
+1. Candidate account **MUST** already be registered in Firebase Authentication.
+2. Candidate's email address **MUST** be verified (`emailVerified === true`).
+3. Confirmation flag (`--confirm` or `CONFIRM_BOOTSTRAP=true`) is strictly required.
+4. Initial public profile rating is neutral (`averageRating: 0.0, totalReviews: 0`).
+5. Audit event (`BOOTSTRAP_INITIAL_ADMIN`) is written to `auditLogs`.

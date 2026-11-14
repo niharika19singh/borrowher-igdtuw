@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db } from '../config/firebase';
+import { db, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { adminManageCategorySchema } from '../shared/validators';
 import { Category } from '../shared/types';
@@ -7,7 +7,7 @@ import { Category } from '../shared/types';
 /**
  * Admin action to create or update marketplace categories.
  */
-export const adminManageCategory = onCall(async (request) => {
+export const adminManageCategory = onCall({ region: FUNCTIONS_REGION }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Admin authentication required');
   }

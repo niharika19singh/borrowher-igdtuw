@@ -46,13 +46,12 @@ describe('Firestore Security Rules Test Suite', () => {
     const otherStudentUid = 'student_ananya';
 
     beforeEach(async () => {
-      // Seed user doc using admin context
       const adminDb = testEnv.authenticatedContext('admin_setup', { admin: true }).firestore();
       await adminDb.collection('users').doc(studentUid).set({
         uid: studentUid,
         displayName: 'Sneha Verma',
         email: 'sneha@igdtuw.ac.in',
-        verificationStatus: 'pending', // Starts pending
+        verificationStatus: 'pending',
         accountStatus: 'active',
         programme: 'B.Tech CSE',
         year: 3,
@@ -122,13 +121,16 @@ describe('Firestore Security Rules Test Suite', () => {
   });
 
   // ===========================================================================
-  // 2. publicProfiles/{uid} Access Control
+  // 2. publicProfiles/{uid} Access Control & Suspended Account Enforcement
   // ===========================================================================
   describe('publicProfiles/{uid} Access Control', () => {
     const studentUid = 'student_pooja';
+    const verifiedViewerUid = 'student_radha';
+    const suspendedViewerUid = 'student_suspended';
 
     beforeEach(async () => {
       const adminDb = testEnv.authenticatedContext('admin_setup', { admin: true }).firestore();
+      // Target public profile
       await adminDb.collection('publicProfiles').doc(studentUid).set({
         uid: studentUid,
         displayName: 'Pooja Rani',
@@ -137,10 +139,34 @@ describe('Firestore Security Rules Test Suite', () => {
         completedBorrowCount: 5,
         ratingSummary: { averageRating: 4.9, totalReviews: 8 },
       });
+
+      // Active verified viewer profile
+      await adminDb.collection('users').doc(verifiedViewerUid).set({
+        uid: verifiedViewerUid,
+        displayName: 'Radha Sharma',
+        email: 'radha@igdtuw.ac.in',
+        verificationStatus: 'verified',
+        accountStatus: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Suspended viewer profile (has stale verifiedStudent claim but accountStatus is suspended)
+      await adminDb.collection('users').doc(suspendedViewerUid).set({
+        uid: suspendedViewerUid,
+        displayName: 'Suspended Student',
+        email: 'suspended@igdtuw.ac.in',
+        verificationStatus: 'suspended',
+        accountStatus: 'suspended',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
     });
 
-    it('allows verified student to read public profile', async () => {
-      const verifiedDb = testEnv.authenticatedContext('student_radha', { verifiedStudent: true }).firestore();
+    it('allows active verified student to read public profile', async () => {
+      const verifiedDb = testEnv
+        .authenticatedContext(verifiedViewerUid, { verifiedStudent: true })
+        .firestore();
       await assertSucceeds(verifiedDb.collection('publicProfiles').doc(studentUid).get());
     });
 
@@ -149,8 +175,17 @@ describe('Firestore Security Rules Test Suite', () => {
       await assertFails(unverifiedDb.collection('publicProfiles').doc(studentUid).get());
     });
 
+    it('denies suspended student with stale verifiedStudent claim from reading public profile', async () => {
+      const suspendedDb = testEnv
+        .authenticatedContext(suspendedViewerUid, { verifiedStudent: true })
+        .firestore();
+      await assertFails(suspendedDb.collection('publicProfiles').doc(studentUid).get());
+    });
+
     it('denies student writes to public profiles', async () => {
-      const studentDb = testEnv.authenticatedContext(studentUid, { verifiedStudent: true }).firestore();
+      const studentDb = testEnv
+        .authenticatedContext(verifiedViewerUid, { verifiedStudent: true })
+        .firestore();
       await assertFails(
         studentDb.collection('publicProfiles').doc(studentUid).update({
           completedBorrowCount: 100,
@@ -160,11 +195,12 @@ describe('Firestore Security Rules Test Suite', () => {
   });
 
   // ===========================================================================
-  // 3. listings/{listingId} Access Control
+  // 3. listings/{listingId} Strict Cloud-Function-Only Write Security
   // ===========================================================================
-  describe('listings/{listingId} Access Control', () => {
+  describe('listings/{listingId} Access Control & Mutation Locking', () => {
     const ownerUid = 'lender_shreya';
     const borrowerUid = 'borrower_kavya';
+    const suspendedUid = 'suspended_user';
     const listingId = 'listing_calc_001';
 
     const validListingData = {
@@ -188,11 +224,49 @@ describe('Firestore Security Rules Test Suite', () => {
 
     beforeEach(async () => {
       const adminDb = testEnv.authenticatedContext('admin_setup', { admin: true }).firestore();
-      await adminDb.collection('listings').doc(listingId).set(validListingData);
+      // Active verified owner
+      await adminDb.collection('users').doc(ownerUid).set({
+        uid: ownerUid,
+        displayName: 'Shreya Patel',
+        email: 'shreya@igdtuw.ac.in',
+        verificationStatus: 'verified',
+        accountStatus: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Active verified borrower
+      await adminDb.collection('users').doc(borrowerUid).set({
+        uid: borrowerUid,
+        displayName: 'Kavya Jain',
+        email: 'kavya@igdtuw.ac.in',
+        verificationStatus: 'verified',
+        accountStatus: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Suspended student
+      await adminDb.collection('users').doc(suspendedUid).set({
+        uid: suspendedUid,
+        displayName: 'Suspended User',
+        email: 'suspended@igdtuw.ac.in',
+        verificationStatus: 'suspended',
+        accountStatus: 'suspended',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Seed listing with security rules disabled (simulating Firebase Admin SDK Cloud Function write)
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('listings').doc(listingId).set(validListingData);
+      });
     });
 
-    it('allows verified student to read an active listing', async () => {
-      const verifiedDb = testEnv.authenticatedContext(borrowerUid, { verifiedStudent: true }).firestore();
+    it('allows verified active student to read an active listing', async () => {
+      const verifiedDb = testEnv
+        .authenticatedContext(borrowerUid, { verifiedStudent: true })
+        .firestore();
       await assertSucceeds(verifiedDb.collection('listings').doc(listingId).get());
     });
 
@@ -201,10 +275,28 @@ describe('Firestore Security Rules Test Suite', () => {
       await assertFails(unverifiedDb.collection('listings').doc(listingId).get());
     });
 
-    it('allows verified owner to create a valid listing matching their UID', async () => {
-      const ownerDb = testEnv.authenticatedContext(ownerUid, { verifiedStudent: true }).firestore();
-      const newListingId = 'listing_new_002';
-      await assertSucceeds(
+    it('denies suspended student with stale token claim from reading active listings', async () => {
+      const suspendedDb = testEnv
+        .authenticatedContext(suspendedUid, { verifiedStudent: true })
+        .firestore();
+      await assertFails(suspendedDb.collection('listings').doc(listingId).get());
+    });
+
+    it('allows listing owner to read their own listing even if inactive/paused', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('listings').doc(listingId).update({ status: 'paused' });
+      });
+
+      const ownerDb = testEnv.authenticatedContext(ownerUid).firestore();
+      await assertSucceeds(ownerDb.collection('listings').doc(listingId).get());
+    });
+
+    it('strictly denies direct client-side listing creation (must use createListing function)', async () => {
+      const ownerDb = testEnv
+        .authenticatedContext(ownerUid, { verifiedStudent: true })
+        .firestore();
+      const newListingId = 'direct_client_listing';
+      await assertFails(
         ownerDb.collection('listings').doc(newListingId).set({
           ...validListingData,
           listingId: newListingId,
@@ -212,50 +304,30 @@ describe('Firestore Security Rules Test Suite', () => {
       );
     });
 
-    it('denies unverified student from creating a listing', async () => {
-      const unverifiedDb = testEnv.authenticatedContext(ownerUid).firestore();
-      await assertFails(
-        unverifiedDb.collection('listings').doc('listing_fail').set({
-          ...validListingData,
-          listingId: 'listing_fail',
-        })
-      );
-    });
-
-    it('denies creating a listing with someone else UID as ownerUid', async () => {
-      const hackerDb = testEnv.authenticatedContext('hacker_uid', { verifiedStudent: true }).firestore();
-      await assertFails(
-        hackerDb.collection('listings').doc('listing_spoof').set({
-          ...validListingData,
-          ownerUid: 'innocent_uid',
-        })
-      );
-    });
-
-    it('allows owner to update their own listing', async () => {
-      const ownerDb = testEnv.authenticatedContext(ownerUid, { verifiedStudent: true }).firestore();
-      await assertSucceeds(
-        ownerDb.collection('listings').doc(listingId).update({
-          pricePerDay: 25,
-          status: 'paused',
-        })
-      );
-    });
-
-    it('denies another student from modifying someone else listing', async () => {
-      const nonOwnerDb = testEnv.authenticatedContext(borrowerUid, { verifiedStudent: true }).firestore();
-      await assertFails(
-        nonOwnerDb.collection('listings').doc(listingId).update({
-          pricePerDay: 5,
-        })
-      );
-    });
-
-    it('denies client setting status to removed (moderation only)', async () => {
-      const ownerDb = testEnv.authenticatedContext(ownerUid, { verifiedStudent: true }).firestore();
+    it('strictly denies direct client-side listing update (must use updateListing function)', async () => {
+      const ownerDb = testEnv
+        .authenticatedContext(ownerUid, { verifiedStudent: true })
+        .firestore();
       await assertFails(
         ownerDb.collection('listings').doc(listingId).update({
-          status: 'removed',
+          pricePerDay: 50,
+        })
+      );
+    });
+
+    it('strictly denies direct client-side listing deletion (must use adminModerateListing)', async () => {
+      const ownerDb = testEnv
+        .authenticatedContext(ownerUid, { verifiedStudent: true })
+        .firestore();
+      await assertFails(ownerDb.collection('listings').doc(listingId).delete());
+    });
+
+    it('strictly denies direct client-side listing mutations even from administrator client SDK', async () => {
+      const adminClientDb = testEnv.authenticatedContext('admin1', { admin: true }).firestore();
+      await assertFails(
+        adminClientDb.collection('listings').doc('admin_direct_listing').set({
+          ...validListingData,
+          listingId: 'admin_direct_listing',
         })
       );
     });
@@ -265,6 +337,9 @@ describe('Firestore Security Rules Test Suite', () => {
   // 4. categories & pickupZones Access Control
   // ===========================================================================
   describe('categories & pickupZones Access Control', () => {
+    const verifiedUid = 'verified_student_1';
+    const suspendedUid = 'suspended_student_1';
+
     beforeEach(async () => {
       const adminDb = testEnv.authenticatedContext('admin_setup', { admin: true }).firestore();
       await adminDb.collection('categories').doc('academic-books').set({
@@ -273,7 +348,28 @@ describe('Firestore Security Rules Test Suite', () => {
       });
       await adminDb.collection('pickupZones').doc('admin-block-foyer').set({
         label: 'Admin Block Foyer',
-        active: true,
+        active: false,
+        approvalStatus: 'pending_review',
+      });
+
+      await adminDb.collection('users').doc(verifiedUid).set({
+        uid: verifiedUid,
+        displayName: 'Verified Student',
+        email: 'v@igdtuw.ac.in',
+        verificationStatus: 'verified',
+        accountStatus: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await adminDb.collection('users').doc(suspendedUid).set({
+        uid: suspendedUid,
+        displayName: 'Suspended Student',
+        email: 's@igdtuw.ac.in',
+        verificationStatus: 'suspended',
+        accountStatus: 'suspended',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
     });
 
@@ -299,14 +395,23 @@ describe('Firestore Security Rules Test Suite', () => {
       );
     });
 
-    it('allows verified student to read approved pickup zones', async () => {
-      const verifiedDb = testEnv.authenticatedContext('student_verified', { verifiedStudent: true }).firestore();
+    it('allows verified active student to read pickup zones', async () => {
+      const verifiedDb = testEnv
+        .authenticatedContext(verifiedUid, { verifiedStudent: true })
+        .firestore();
       await assertSucceeds(verifiedDb.collection('pickupZones').doc('admin-block-foyer').get());
     });
 
     it('denies unverified student from reading pickup zones', async () => {
       const unverifiedDb = testEnv.authenticatedContext('student_unverified').firestore();
       await assertFails(unverifiedDb.collection('pickupZones').doc('admin-block-foyer').get());
+    });
+
+    it('denies suspended student from reading pickup zones', async () => {
+      const suspendedDb = testEnv
+        .authenticatedContext(suspendedUid, { verifiedStudent: true })
+        .firestore();
+      await assertFails(suspendedDb.collection('pickupZones').doc('admin-block-foyer').get());
     });
   });
 

@@ -1,12 +1,12 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db } from '../config/firebase';
+import { db, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { adminModerateListingSchema } from '../shared/validators';
 
 /**
  * Admin action to moderate or remove an unsafe or rule-violating marketplace listing.
  */
-export const adminModerateListing = onCall(async (request) => {
+export const adminModerateListing = onCall({ region: FUNCTIONS_REGION }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Admin authentication required');
   }

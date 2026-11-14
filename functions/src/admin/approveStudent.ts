@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db, auth } from '../config/firebase';
+import { db, auth, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { approveStudentSchema } from '../shared/validators';
 import { ApproveStudentResponse } from '../shared/types';
@@ -10,9 +10,12 @@ import { ApproveStudentResponse } from '../shared/types';
  * Enforces:
  * - Caller must possess active `admin: true` custom claim.
  * - Sets `verifiedStudent` custom claim appropriately.
+ * - On suspension: revokes active refresh tokens immediately to terminate existing sessions.
  * - Updates `users/{uid}` and `publicProfiles/{uid}` atomically.
  */
-export const approveStudent = onCall(async (request): Promise<ApproveStudentResponse> => {
+export const approveStudent = onCall(
+  { region: FUNCTIONS_REGION },
+  async (request): Promise<ApproveStudentResponse> => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Admin authentication required');
   }
@@ -33,6 +36,7 @@ export const approveStudent = onCall(async (request): Promise<ApproveStudentResp
     }
 
     const isVerified = status === 'verified';
+    const isSuspended = status === 'suspended';
     const now = new Date().toISOString();
 
     // 1. Update Auth Custom Claims
@@ -40,13 +44,19 @@ export const approveStudent = onCall(async (request): Promise<ApproveStudentResp
     await auth.setCustomUserClaims(uid, {
       ...currentClaims,
       verifiedStudent: isVerified,
+      accountStatus: isSuspended ? 'suspended' : 'active',
     });
 
-    // 2. Update Firestore documents
+    // 2. If suspending account, immediately revoke all active refresh tokens
+    if (isSuspended) {
+      await auth.revokeRefreshTokens(uid);
+    }
+
+    // 3. Update Firestore documents
     const batch = db.batch();
     batch.update(userDocRef, {
       verificationStatus: status,
-      accountStatus: status === 'suspended' ? 'suspended' : 'active',
+      accountStatus: isSuspended ? 'suspended' : 'active',
       rejectionReason: status === 'rejected' ? (reason || 'Documentation did not meet criteria') : null,
       updatedAt: now,
     });

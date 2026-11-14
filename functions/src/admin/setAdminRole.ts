@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db, auth } from '../config/firebase';
+import { db, auth, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { setAdminRoleSchema } from '../shared/validators';
 import { SetAdminRoleResponse } from '../shared/types';
@@ -11,7 +11,9 @@ import { SetAdminRoleResponse } from '../shared/types';
  * - Restricted exclusively to existing administrators (`token.admin === true`).
  * - For initial bootstrap of the first admin, use `scripts/bootstrap-admin.ts` instead.
  */
-export const setAdminRole = onCall(async (request): Promise<SetAdminRoleResponse> => {
+export const setAdminRole = onCall(
+  { region: FUNCTIONS_REGION },
+  async (request): Promise<SetAdminRoleResponse> => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Admin authentication required');
   }

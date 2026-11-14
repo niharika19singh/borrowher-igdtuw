@@ -103,4 +103,29 @@ describe('Storage Security Rules Test Suite', () => {
     const fileRef = storage.ref(`listing-images/${studentUid}/${listingId}/test.jpg`);
     await assertFails(fileRef.getDownloadURL());
   });
+
+  // =========================================================================
+  // Booking Evidence Path Lockdown (Reserved for Backend Developer 2)
+  // =========================================================================
+  it('strictly denies client uploads to booking-evidence path pending Backend Dev 2 participant authorization', async () => {
+    const storage = testEnv
+      .authenticatedContext(studentUid, { verifiedStudent: true })
+      .storage();
+
+    const evidenceRef = storage.ref(`booking-evidence/booking_123/${studentUid}/proof.jpg`);
+    const smallJpgBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+
+    await assertFails(
+      Promise.resolve(evidenceRef.put(smallJpgBytes, { contentType: 'image/jpeg' }))
+    );
+  });
+
+  it('strictly denies client reads from booking-evidence path', async () => {
+    const storage = testEnv
+      .authenticatedContext(studentUid, { verifiedStudent: true })
+      .storage();
+
+    const evidenceRef = storage.ref(`booking-evidence/booking_123/${studentUid}/proof.jpg`);
+    await assertFails(evidenceRef.getDownloadURL());
+  });
 });

@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { db } from '../config/firebase';
+import { db, FUNCTIONS_REGION } from '../config/firebase';
 import { handleCallableError } from '../shared/errors';
 import { Listing, PublicProfile } from '../shared/types';
 
@@ -11,7 +11,9 @@ export interface GetListingResponse {
 /**
  * Retrieves detailed listing information along with the lender's public reputation summary.
  */
-export const getListing = onCall(async (request): Promise<GetListingResponse> => {
+export const getListing = onCall(
+  { region: FUNCTIONS_REGION },
+  async (request): Promise<GetListingResponse> => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Caller must be authenticated');
   }

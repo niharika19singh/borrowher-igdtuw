@@ -47,14 +47,9 @@ service firebase.storage {
     // Path: booking-evidence/{bookingId}/{uid}/{fileName}
     // =========================================================================
     match /booking-evidence/{bookingId}/{uid}/{fileName} {
-      // Evidence is strictly private to participants or admin
-      allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
-
-      // Only authenticated user can upload their own condition proof
-      allow create: if isOwner(uid)
-        && isValidImage();
-
-      allow update, delete: if isAdmin();
+      // Direct client access is strictly denied.
+      // Reserved for future integration by Backend Developer 2 once booking-participant validation is implemented.
+      allow read, write: if false;
     }
 
     // Default deny all other paths

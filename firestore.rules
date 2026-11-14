@@ -16,7 +16,13 @@ service cloud.firestore {
     }
 
     function isVerifiedStudent() {
-      return isAuthenticated() && 'verifiedStudent' in request.auth.token && request.auth.token.verifiedStudent == true;
+      return isAuthenticated()
+        && 'verifiedStudent' in request.auth.token
+        && request.auth.token.verifiedStudent == true
+        && (!('accountStatus' in request.auth.token) || request.auth.token.accountStatus != 'suspended')
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'verified';
     }
 
     function isOwner(uid) {
@@ -62,34 +68,11 @@ service cloud.firestore {
         || (isAuthenticated() && resource.data.ownerUid == request.auth.uid)
         || isAdmin();
 
-      // Only verified students can create listings matching their own UID, or admin.
-      allow create: if (isVerifiedStudent()
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.status in ['active', 'draft']
-        && request.resource.data.pricePerDay >= 0
-        && request.resource.data.depositAmount >= 0
-        && request.resource.data.minDays >= 1
-        && request.resource.data.maxDays >= request.resource.data.minDays
-        && request.resource.data.title.size() >= 3
-        && request.resource.data.title.size() <= 100
-        && request.resource.data.description.size() >= 10
-        && request.resource.data.description.size() <= 2000
-        && request.resource.data.imagePaths.size() <= 5)
-        || isAdmin();
-
-      // Only owner can update permitted fields; cannot change ownerUid or set to 'removed'.
-      allow update: if (
-          isOwner(resource.data.ownerUid)
-          && isVerifiedStudent()
-          && request.resource.data.ownerUid == resource.data.ownerUid
-          && request.resource.data.status in ['active', 'paused', 'draft']
-          && resource.data.status != 'removed'
-          && request.resource.data.status != 'removed'
-        ) || isAdmin();
-
-      // Deletion is restricted to admins or owner if in draft/paused status.
-      allow delete: if isAdmin()
-        || (isOwner(resource.data.ownerUid) && resource.data.status in ['draft', 'paused']);
+      // Direct client-side creation, updating, and deletion are strictly denied.
+      // All marketplace mutations must proceed through trusted Cloud Functions (createListing,
+      // updateListing, pauseListing, adminModerateListing), which use Firebase Admin SDK to bypass
+      // client rules while enforcing authoritative server-side checks.
+      allow create, update, delete: if false;
     }
 
     // =========================================================================
