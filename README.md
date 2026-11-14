@@ -176,16 +176,16 @@ cd functions && npm install && cd ..
 ```
 
 ### Running Tests
-BorrowHer includes 69 automated unit, security rules, and integration tests:
+BorrowHer includes 102 automated unit, security rules, and integration tests:
 
 ```bash
-# Run unit tests (Zod validators, domain models, error handling, function options) - 30 tests
+# Run unit tests (Zod validators, domain models, error handling, function options, account status invariants) - 39 tests
 npm run test
 
-# Run Firestore and Storage security rules and bootstrap tests against local emulators - 39 tests
+# Run Firestore and Storage security rules and bootstrap tests against local emulators - 63 tests
 npm run test:rules
 
-# Run all test suites in sequence (69 tests total)
+# Run all test suites in sequence (102 tests total)
 npm run test:all
 ```
 
@@ -210,16 +210,16 @@ npm run emulators:start
 - Functions: `localhost:5001` (configured for region `asia-south1`)
 
 ### Seeding Catalog & Campus Pickup Zones
-With emulators running (or connected to a test project):
+All administrative scripts require an explicit Firebase Project ID via `--project <projectId>` or `FIREBASE_PROJECT_ID` (implicit default project selection is strictly prohibited):
 ```bash
 # Seed initial 7 marketplace categories
-npm run seed:categories
+npm run seed:categories -- --project demo-borrowher
 
 # Seed proposed IGDTUW campus exchange points (seeded as pending_review, active: false)
-npm run seed:pickup-zones
+npm run seed:pickup-zones -- --project demo-borrowher
 
 # Securely elevate an existing verified account to platform administrator
-npm run bootstrap:admin -- --email verified-admin@igdtuw.ac.in --confirm
+npm run bootstrap:admin -- --project demo-borrowher --email verified-admin@igdtuw.ac.in --confirm
 ```
 
 ---
@@ -229,7 +229,7 @@ npm run bootstrap:admin -- --email verified-admin@igdtuw.ac.in --confirm
 When preparing for live staging or production deployment:
 
 1. **Create Firebase Project:** In the [Firebase Console](https://console.firebase.google.com), create a new project (e.g. `borrowher-igdtuw-prod`).
-2. **Select Database & Functions Region:** Choose `asia-south1` (Mumbai). All Cloud Functions 2nd Gen and Cloud Firestore databases must reside in `asia-south1` to match the client configuration `getFunctions(app, 'asia-south1')`.
+2. **Select Database & Functions Region:** Choose `asia-south1` (Mumbai). All Cloud Functions 2nd Gen and Cloud Firestore databases should be provisioned in `asia-south1` to align with the client configuration `getFunctions(app, 'asia-south1')`. *Note: Code configuration specifies deployment target routing; actual resource residency depends on project creation settings in the console.*
 3. **Enable Services:**
    - **Authentication:** Enable Email/Password provider.
    - **Cloud Firestore:** Initialize in Production Mode (`asia-south1`).
@@ -243,7 +243,7 @@ When preparing for live staging or production deployment:
    ```bash
    firebase deploy --only functions
    ```
-6. **Bootstrap Administrator:** Run `npm run bootstrap:admin -- --email <authorized_admin_email> --confirm` with service account credentials to safely provision the platform administrator (requires pre-registered account with verified email).
+6. **Bootstrap Administrator:** Run `npm run bootstrap:admin -- --project <project_id> --email <authorized_admin_email> --confirm` with service account credentials to safely provision the platform administrator (requires pre-registered account with verified email).
 7. **Configure Vercel:** Set environment variables from `.env.example` (`VITE_FIREBASE_*`) in the Vercel dashboard.
 
 ---
@@ -251,8 +251,9 @@ When preparing for live staging or production deployment:
 ## 8. Integration Instructions for Team Members
 
 - **Frontend Developer 1:** Consult [`docs/backend-developer-1-contract.md`](docs/backend-developer-1-contract.md) for listing fields, status enums, and required Firestore composite query structures.
-  - **Listing Mutations:** Note that direct client-side listing creation/updates/deletions are denied by security rules (`allow create, update, delete: if false;`). Use callable Cloud Functions `createListing`, `updateListing`, and `pauseListing` in region `asia-south1`.
+  - **Listing Mutations:** Note that direct client-side listing creation/updates/deletions are denied by security rules (`allow create, update, delete: if false;`). Use callable Cloud Functions `createListing`, `updateListing`, and `pauseListing` in region `asia-south1`. Strict active account verification is enforced: callers must have `accountStatus === 'active'` and `verificationStatus === 'verified'`.
   - **Pickup Zones:** Only active and approved pickup zones (`active: true`, `approvalStatus: 'approved'`) are accepted by `createListing`.
+  - **Item Details (`getListing`):** Validates caller's live Firestore account state (`accountStatus === 'active'` and `verificationStatus === 'verified'`). Listing ownership does not bypass this verification gate.
 - **Frontend Developer 2:** Use callable function contracts (`ensureUserProfile`, `approveStudent`, `setAdminRole`, `adminModerateListing`) and shared models in `functions/src/shared/types.ts`.
   - Always initialize Functions with: `getFunctions(app, 'asia-south1')`.
 - **Backend Developer 2:** Date-slot reservation locks (`bookingSlots`), booking lifecycle (`bookings`), handover confirmations, and deposit simulation integrate seamlessly with the existing security foundation:
@@ -264,8 +265,10 @@ When preparing for live staging or production deployment:
 ## 9. Security & Privacy Guarantees
 
 - **No Student Data Leaks:** Public profiles strictly omit student email addresses, phone numbers, hostel room numbers, and verification documents.
-- **Direct Listing Mutation Lockdown:** Direct client writes to `listings` are completely blocked; all mutations must pass server-side Zod validation and account-status verification.
+- **Direct Listing Mutation Lockdown:** Direct client writes to `listings` are completely blocked; all mutations must pass server-side Zod validation and strict account status verification (`accountStatus === 'active'` and `verificationStatus === 'verified'`).
+- **Live Account Status Enforcement:** `getListing` authoritatively verifies caller's live Firestore profile; suspended or rejected students cannot access marketplace item details, even for listings they own.
+- **Cross-Service Storage Rules:** Cloud Storage security rules evaluate live Firestore user profiles via `firestore.exists` and `firestore.get`. A student with a stale `verifiedStudent` JWT claim is strictly denied from uploading or reading protected listing images if their account is suspended or unverified.
+- **Explicit Project Selection:** All administrative scripts require explicit project identification (`--project` or `FIREBASE_PROJECT_ID`), display execution targets prominently, and prevent accidental execution against live production databases.
 - **Real-Time Suspended-Account Enforcement:** Suspended or rejected students are immediately blocked from marketplace reads/writes via real-time Firestore rule checks and instant Auth refresh token revocation.
 - **Approved Public Points Only:** Pickup zones must be formally approved (`approvalStatus: 'approved'`, `active: true`) by an administrator. Unverified opening times or monitoring claims are removed. Private residence and room addresses are prohibited.
-- **Storage Lockdown:** Item photos require verified student authentication and MIME/size validation. Booking evidence storage is locked pending Backend 2 participant logic.
 - **Client Elevation Prevented:** Custom claims (`admin`, `verifiedStudent`) and user verification status are protected by server-side verification and can never be modified through client-side writes.

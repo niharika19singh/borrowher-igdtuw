@@ -14,26 +14,14 @@ import { UserProfile, PublicProfile } from '../functions/src/shared/types';
  * 7. Passwords or credentials must never be accepted, generated, or printed by this script.
  */
 
-const projectId = process.env.FIREBASE_PROJECT_ID || 'borrowher-igdtuw';
-if (process.env.FIRESTORE_EMULATOR_HOST) {
-  console.log(`[Admin Bootstrap] Connecting to Firestore Emulator at ${process.env.FIRESTORE_EMULATOR_HOST}`);
-}
-if (process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-  console.log(`[Admin Bootstrap] Connecting to Auth Emulator at ${process.env.FIREBASE_AUTH_EMULATOR_HOST}`);
-}
-
-if (admin.apps.length === 0) {
-  admin.initializeApp({ projectId });
-}
-
-const auth = admin.auth();
-const db = admin.firestore();
-
 function parseArgs() {
   const args = process.argv.slice(2);
   let targetEmail: string | undefined = process.env.ADMIN_EMAIL;
   let targetUid: string | undefined = process.env.ADMIN_UID;
   let confirmed: boolean = process.env.CONFIRM_BOOTSTRAP === 'true';
+  let projectId: string | undefined =
+    process.env.FIREBASE_PROJECT_ID?.trim() ||
+    process.env.GCLOUD_PROJECT?.trim();
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--email' && args[i + 1]) {
@@ -44,31 +32,70 @@ function parseArgs() {
       i++;
     } else if (args[i] === '--confirm') {
       confirmed = true;
+    } else if ((args[i] === '--project' || args[i] === '-p') && args[i + 1]) {
+      projectId = args[i + 1].trim();
+      i++;
     }
   }
 
-  return { targetEmail, targetUid, confirmed };
+  return { targetEmail, targetUid, confirmed, projectId };
 }
 
 export async function bootstrapAdmin(options?: {
   targetEmail?: string;
   targetUid?: string;
   confirmed?: boolean;
+  projectId?: string;
 }) {
   const opts = options || parseArgs();
-  const { targetEmail, targetUid, confirmed } = opts;
+  const targetEmail = opts.targetEmail;
+  const targetUid = opts.targetUid;
+  const confirmed = opts.confirmed;
+  const projectId =
+    opts.projectId ||
+    process.env.FIREBASE_PROJECT_ID?.trim() ||
+    process.env.GCLOUD_PROJECT?.trim();
 
-  // 1. Enforce explicit target identifier
-  if (!targetEmail && !targetUid) {
+  // 1. Enforce explicit Firebase project ID
+  if (!projectId) {
     throw new Error(
-      'Administrator target identifier is required.\n' +
-      'Usage: tsx scripts/bootstrap-admin.ts --email <candidate-email> --confirm\n' +
-      '   or: tsx scripts/bootstrap-admin.ts --uid <candidate-uid> --confirm\n' +
-      '   or set environment variables: ADMIN_EMAIL=<email> CONFIRM_BOOTSTRAP=true'
+      'Firebase Project ID is required. Implicit default project selection is prohibited.\n' +
+      'Please specify the target project explicitly using:\n' +
+      '  --project <projectId>\n' +
+      'or by setting the FIREBASE_PROJECT_ID or GCLOUD_PROJECT environment variable.\n' +
+      'Example: tsx scripts/bootstrap-admin.ts --project demo-borrowher --email admin@igdtuw.ac.in --confirm'
     );
   }
 
-  // 2. Enforce explicit confirmation
+  const isEmulator = Boolean(
+    process.env.FIREBASE_AUTH_EMULATOR_HOST ||
+    process.env.FIRESTORE_EMULATOR_HOST
+  );
+
+  console.log(`\n======================================================`);
+  console.log(`🔐 BorrowHer — Secure Administrator Bootstrap Procedure`);
+  console.log(`🎯 Target Project:   ${projectId}`);
+  console.log(`🔌 Execution Mode:   ${isEmulator ? 'Local Firebase Emulator' : 'LIVE / PRODUCTION CLOUD'}`);
+  console.log(`👤 Target Candidate: ${targetEmail ? `Email: ${targetEmail}` : `UID: ${targetUid}`}`);
+  console.log(`======================================================\n`);
+
+  if (!isEmulator) {
+    console.warn(`⚠️  CRITICAL PRODUCTION NOTICE:`);
+    console.warn(`⚠️  Target is a LIVE / PRODUCTION Firebase project: '${projectId}'.`);
+    console.warn(`⚠️  Administrative custom claims will be permanently granted.`);
+  }
+
+  // 2. Enforce explicit target identifier
+  if (!targetEmail && !targetUid) {
+    throw new Error(
+      'Administrator target identifier is required.\n' +
+      'Usage: tsx scripts/bootstrap-admin.ts --project <projectId> --email <candidate-email> --confirm\n' +
+      '   or: tsx scripts/bootstrap-admin.ts --project <projectId> --uid <candidate-uid> --confirm\n' +
+      '   or set environment variables: FIREBASE_PROJECT_ID=<projectId> ADMIN_EMAIL=<email> CONFIRM_BOOTSTRAP=true'
+    );
+  }
+
+  // 3. Enforce explicit confirmation
   if (!confirmed) {
     throw new Error(
       'Elevation confirmation is missing. You must provide the --confirm flag or set CONFIRM_BOOTSTRAP=true\n' +
@@ -76,10 +103,12 @@ export async function bootstrapAdmin(options?: {
     );
   }
 
-  console.log(`\n======================================================`);
-  console.log(`🔐 BorrowHer — Secure Administrator Bootstrap Procedure`);
-  console.log(`Target: ${targetEmail ? `Email: ${targetEmail}` : `UID: ${targetUid}`}`);
-  console.log(`======================================================\n`);
+  if (admin.apps.length === 0) {
+    admin.initializeApp({ projectId });
+  }
+
+  const auth = admin.auth();
+  const db = admin.firestore();
 
   // 3. Look up existing Auth account
   let userRecord: admin.auth.UserRecord;

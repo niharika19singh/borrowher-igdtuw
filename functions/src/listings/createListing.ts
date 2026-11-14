@@ -32,17 +32,22 @@ export const createListing = onCall(
     }
 
     const userData = userDoc.data();
-    if (userData?.accountStatus === 'suspended') {
+    if (userData?.accountStatus !== 'active' || userData?.verificationStatus !== 'verified') {
+      if (userData?.accountStatus === 'suspended') {
+        throw new HttpsError(
+          'permission-denied',
+          'Your account has been suspended. Marketplace listing creation is denied.'
+        );
+      }
+      if (userData?.verificationStatus !== 'verified') {
+        throw new HttpsError(
+          'permission-denied',
+          'Only verified IGDTUW students can publish marketplace listings. Please complete student verification.'
+        );
+      }
       throw new HttpsError(
         'permission-denied',
-        'Your account has been suspended. Marketplace listing creation is denied.'
-      );
-    }
-
-    if (userData?.verificationStatus !== 'verified') {
-      throw new HttpsError(
-        'permission-denied',
-        'Only verified IGDTUW students can publish marketplace listings. Please complete student verification.'
+        'Your account status is invalid or inactive. Marketplace listing creation is denied.'
       );
     }
 

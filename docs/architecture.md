@@ -18,10 +18,10 @@ BorrowHer is built for the higher-education domain. Its core purpose is solving 
 
 ## 2. Cloud-Based Architecture Justification
 
-1. **Managed Serverless Scaling:** Student campus demand fluctuates drastically based on the academic calendar (semester examinations, practical lab weeks, placement season, monsoon rains). Serverless functions (Cloud Functions 2nd Gen) pinned to Node.js 22 runtime and deployed to `asia-south1` (Mumbai) along with fully managed Cloud Firestore automatically scale to zero during idle periods and absorb concurrent spikes without manual server administration.
-2. **Deterministic Regional Co-location:** All Cloud Functions 2nd Gen callable endpoints, Cloud Firestore collections, and Storage buckets reside in `asia-south1` (Mumbai, India). Frontend callers initialize the Functions SDK with `getFunctions(app, 'asia-south1')`, ensuring sub-30ms intra-region latency across campus.
+1. **Managed Serverless Scaling:** Student campus demand fluctuates drastically based on the academic calendar (semester examinations, practical lab weeks, placement season, monsoon rains). Serverless functions (Cloud Functions 2nd Gen) pinned to Node.js 22 runtime and configured for `asia-south1` (Mumbai) along with fully managed Cloud Firestore automatically scale to zero during idle periods and absorb concurrent spikes without manual server administration.
+2. **Regional Configuration Alignment:** The backend codebase explicitly configures `region: 'asia-south1'` across all Cloud Functions 2nd Gen exports. Frontend callers initialize the Functions SDK with `getFunctions(app, 'asia-south1')`. Note that regional configuration in code specifies target routing; actual physical resource location depends on Google Cloud / Firebase project provisioning.
 3. **Real-Time Data Synchronisation:** Item availability and booking state transitions must remain in immediate synchronization across borrower and lender devices. Firestore snapshot listeners eliminate manual polling and stale state.
-4. **Decoupled Edge Deployment:** Frontend assets are delivered via Vercel's global CDN edge network, ensuring sub-100ms load times on student mobile devices, completely independent from backend database operations.
+4. **Decoupled Edge Deployment:** Frontend assets are delivered via Vercel's global CDN edge network to optimize distribution across student devices, completely independent from backend database operations.
 5. **Resilient Object Storage:** Media assets (item photographs and condition proofs) are stored in Cloud Storage with strict byte limits and MIME validation rather than embedding binary data in database records.
 
 ---

@@ -1,17 +1,30 @@
 import * as admin from 'firebase-admin';
 import { Category } from '../functions/src/shared/types';
 
-// Support running against local emulator or live project
-const projectId = process.env.FIREBASE_PROJECT_ID || 'borrowher-igdtuw';
-if (process.env.FIRESTORE_EMULATOR_HOST) {
-  console.log(`[Seed Categories] Connecting to Firestore Emulator at ${process.env.FIRESTORE_EMULATOR_HOST}`);
-}
+export function resolveProjectId(args: string[] = process.argv.slice(2)): string {
+  let projectId: string | undefined =
+    process.env.FIREBASE_PROJECT_ID?.trim() ||
+    process.env.GCLOUD_PROJECT?.trim();
 
-if (admin.apps.length === 0) {
-  admin.initializeApp({ projectId });
-}
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--project' || args[i] === '-p') && args[i + 1]) {
+      projectId = args[i + 1].trim();
+      break;
+    }
+  }
 
-const db = admin.firestore();
+  if (!projectId) {
+    throw new Error(
+      'Firebase Project ID is required. Implicit default project selection is prohibited.\n' +
+      'Please specify the project explicitly using:\n' +
+      '  --project <projectId>\n' +
+      'or by setting the FIREBASE_PROJECT_ID or GCLOUD_PROJECT environment variable.\n' +
+      'Example: tsx scripts/seed-categories.ts --project demo-borrowher'
+    );
+  }
+
+  return projectId;
+}
 
 export const INITIAL_CATEGORIES: Category[] = [
   {
@@ -86,8 +99,22 @@ export const INITIAL_CATEGORIES: Category[] = [
   },
 ];
 
-export async function seedCategories() {
-  console.log('Seeding BorrowHer categories into Firestore...');
+export async function seedCategories(explicitProjectId?: string) {
+  const projectId = explicitProjectId || resolveProjectId();
+  const isEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+
+  console.log(`\n======================================================`);
+  console.log(`🌱 BorrowHer — Category Catalog Seeding Procedure`);
+  console.log(`🎯 Target Project:   ${projectId}`);
+  console.log(`🔌 Execution Mode:   ${isEmulator ? `Local Firestore Emulator (${process.env.FIRESTORE_EMULATOR_HOST})` : 'LIVE CLOUD PROJECT'}`);
+  console.log(`======================================================\n`);
+
+  if (admin.apps.length === 0) {
+    admin.initializeApp({ projectId });
+  }
+
+  const db = admin.firestore();
+  console.log(`Seeding BorrowHer categories into Firestore (Project: '${projectId}')...`);
   const batch = db.batch();
 
   for (const cat of INITIAL_CATEGORIES) {
@@ -97,7 +124,7 @@ export async function seedCategories() {
   }
 
   await batch.commit();
-  console.log(`✅ Successfully seeded ${INITIAL_CATEGORIES.length} categories.`);
+  console.log(`✅ Successfully seeded ${INITIAL_CATEGORIES.length} categories into '${projectId}'.\n`);
 }
 
 // Execute if run directly from CLI
@@ -105,7 +132,7 @@ if (require.main === module || process.argv[1]?.endsWith('seed-categories.ts')) 
   seedCategories()
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error('❌ Failed to seed categories:', err);
+      console.error('❌ Failed to seed categories:', err.message || err);
       process.exit(1);
     });
 }

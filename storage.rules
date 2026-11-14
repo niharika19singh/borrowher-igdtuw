@@ -8,10 +8,6 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isVerifiedStudent() {
-      return isAuthenticated() && 'verifiedStudent' in request.auth.token && request.auth.token.verifiedStudent == true;
-    }
-
     function isAdmin() {
       return isAuthenticated() && 'admin' in request.auth.token && request.auth.token.admin == true;
     }
@@ -25,21 +21,40 @@ service firebase.storage {
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
 
+    // Cross-Service Rule Helper:
+    // Performs live Firestore profile lookups to ensure that a caller with a stale
+    // 'verifiedStudent' JWT claim cannot upload or read listing images if their Firestore account
+    // is suspended, rejected, or missing.
+    //
+    // Quota and Cost Accounting:
+    // - Each cross-service call consumes 1 Firestore document read.
+    // - Storage security rules permit a maximum of 10 Firestore read calls per evaluation.
+    // - Firestore lookups are short-circuited: if 'verifiedStudent' claim is absent,
+    //   Firestore is never queried, preventing unnecessary billable operations.
+    function isVerifiedActiveStudent() {
+      return isAuthenticated()
+        && 'verifiedStudent' in request.auth.token
+        && request.auth.token.verifiedStudent == true
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.accountStatus == 'active'
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.verificationStatus == 'verified';
+    }
+
     // =========================================================================
     // LISTING PHOTOGRAPHS
     // Path: listing-images/{uid}/{listingId}/{fileName}
     // =========================================================================
     match /listing-images/{uid}/{listingId}/{fileName} {
-      // Verified students and admins can view listing images
-      allow read: if isVerifiedStudent() || isOwner(uid) || isAdmin();
+      // Verified active students and administrators can view listing images
+      allow read: if isVerifiedActiveStudent() || isAdmin();
 
-      // Only the verified owner can upload an image into their UID-scoped directory
+      // Only the verified active owner can upload an image into their UID-scoped directory
       allow create, update: if isOwner(uid)
-        && isVerifiedStudent()
+        && isVerifiedActiveStudent()
         && isValidImage();
 
-      // Owner or admin can delete listing images
-      allow delete: if isOwner(uid) || isAdmin();
+      // Owner (if active and verified) or admin can delete listing images
+      allow delete: if (isOwner(uid) && isVerifiedActiveStudent()) || isAdmin();
     }
 
     // =========================================================================

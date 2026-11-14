@@ -27,16 +27,22 @@ export const pauseListing = onCall({ region: FUNCTIONS_REGION }, async (request)
         throw new HttpsError('not-found', 'Student profile record not found.');
       }
       const userData = userDoc.data();
-      if (userData?.accountStatus === 'suspended') {
+      if (userData?.accountStatus !== 'active' || userData?.verificationStatus !== 'verified') {
+        if (userData?.accountStatus === 'suspended') {
+          throw new HttpsError(
+            'permission-denied',
+            'Your account has been suspended. Marketplace modifications are denied.'
+          );
+        }
+        if (userData?.verificationStatus !== 'verified') {
+          throw new HttpsError(
+            'permission-denied',
+            'Only verified IGDTUW students can pause or resume listings.'
+          );
+        }
         throw new HttpsError(
           'permission-denied',
-          'Your account has been suspended. Marketplace modifications are denied.'
-        );
-      }
-      if (userData?.verificationStatus !== 'verified') {
-        throw new HttpsError(
-          'permission-denied',
-          'Only verified IGDTUW students can pause or resume listings.'
+          'Your account status is invalid or inactive. Marketplace modifications are denied.'
         );
       }
     }

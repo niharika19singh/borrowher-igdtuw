@@ -121,10 +121,10 @@ describe('Cloud Functions 2nd Gen Deployment Region Configuration', () => {
   });
 });
 
-describe('Admin Bootstrap Security Invariants', () => {
+describe('Admin Bootstrap and Seeding Project Selection Safeguards', () => {
   it('rejects bootstrap when no email or UID target is provided', async () => {
     const { bootstrapAdmin } = await import('../../scripts/bootstrap-admin.js');
-    await expect(bootstrapAdmin({ confirmed: true })).rejects.toThrow(
+    await expect(bootstrapAdmin({ confirmed: true, projectId: 'test-project' })).rejects.toThrow(
       'Administrator target identifier is required'
     );
   });
@@ -132,8 +132,113 @@ describe('Admin Bootstrap Security Invariants', () => {
   it('rejects bootstrap when explicit confirmation flag is missing', async () => {
     const { bootstrapAdmin } = await import('../../scripts/bootstrap-admin.js');
     await expect(
-      bootstrapAdmin({ targetEmail: 'admin@igdtuw.ac.in', confirmed: false })
+      bootstrapAdmin({ targetEmail: 'admin@igdtuw.ac.in', confirmed: false, projectId: 'test-project' })
     ).rejects.toThrow('Elevation confirmation is missing');
+  });
+
+  it('rejects admin bootstrap when Firebase Project ID is omitted', async () => {
+    const { bootstrapAdmin } = await import('../../scripts/bootstrap-admin.js');
+    const oldProject = process.env.FIREBASE_PROJECT_ID;
+    const oldGcloud = process.env.GCLOUD_PROJECT;
+    delete process.env.FIREBASE_PROJECT_ID;
+    delete process.env.GCLOUD_PROJECT;
+
+    await expect(
+      bootstrapAdmin({ targetEmail: 'admin@igdtuw.ac.in', confirmed: true })
+    ).rejects.toThrow('Firebase Project ID is required');
+
+    if (oldProject) process.env.FIREBASE_PROJECT_ID = oldProject;
+    if (oldGcloud) process.env.GCLOUD_PROJECT = oldGcloud;
+  });
+
+  it('requires explicit project selection for seed-categories script', async () => {
+    const { resolveProjectId } = await import('../../scripts/seed-categories.js');
+    const oldProject = process.env.FIREBASE_PROJECT_ID;
+    const oldGcloud = process.env.GCLOUD_PROJECT;
+    delete process.env.FIREBASE_PROJECT_ID;
+    delete process.env.GCLOUD_PROJECT;
+
+    // Fails when neither args nor env are present
+    expect(() => resolveProjectId([])).toThrow('Firebase Project ID is required');
+
+    // Succeeds with CLI flag
+    expect(resolveProjectId(['--project', 'borrowher-staging'])).toBe('borrowher-staging');
+    expect(resolveProjectId(['-p', 'borrowher-prod'])).toBe('borrowher-prod');
+
+    // Succeeds with env var
+    process.env.FIREBASE_PROJECT_ID = 'borrowher-env';
+    expect(resolveProjectId([])).toBe('borrowher-env');
+
+    if (oldProject) process.env.FIREBASE_PROJECT_ID = oldProject;
+    else delete process.env.FIREBASE_PROJECT_ID;
+    if (oldGcloud) process.env.GCLOUD_PROJECT = oldGcloud;
+  });
+
+  it('requires explicit project selection for seed-pickup-zones script', async () => {
+    const { resolveProjectId } = await import('../../scripts/seed-pickup-zones.js');
+    const oldProject = process.env.FIREBASE_PROJECT_ID;
+    const oldGcloud = process.env.GCLOUD_PROJECT;
+    delete process.env.FIREBASE_PROJECT_ID;
+    delete process.env.GCLOUD_PROJECT;
+
+    expect(() => resolveProjectId([])).toThrow('Firebase Project ID is required');
+    expect(resolveProjectId(['--project', 'borrowher-zones'])).toBe('borrowher-zones');
+
+    if (oldProject) process.env.FIREBASE_PROJECT_ID = oldProject;
+    else delete process.env.FIREBASE_PROJECT_ID;
+    if (oldGcloud) process.env.GCLOUD_PROJECT = oldGcloud;
+  });
+});
+
+describe('Strict Active-Account and Verification Invariants', () => {
+  function validateStudentAccountState(userData: any): { allowed: boolean; reason?: string } {
+    if (!userData) {
+      return { allowed: false, reason: 'profile-not-found' };
+    }
+    if (userData.accountStatus !== 'active' || userData.verificationStatus !== 'verified') {
+      if (userData.accountStatus === 'suspended') {
+        return { allowed: false, reason: 'account-suspended' };
+      }
+      if (userData.verificationStatus !== 'verified') {
+        return { allowed: false, reason: 'not-verified' };
+      }
+      return { allowed: false, reason: 'invalid-or-inactive-status' };
+    }
+    return { allowed: true };
+  }
+
+  it('allows access only when accountStatus === active and verificationStatus === verified', () => {
+    expect(validateStudentAccountState({ accountStatus: 'active', verificationStatus: 'verified' }).allowed).toBe(true);
+  });
+
+  it('rejects access when accountStatus is suspended even if verificationStatus is verified', () => {
+    const res = validateStudentAccountState({ accountStatus: 'suspended', verificationStatus: 'verified' });
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('account-suspended');
+  });
+
+  it('rejects access when verificationStatus is rejected even if accountStatus is active', () => {
+    const res = validateStudentAccountState({ accountStatus: 'active', verificationStatus: 'rejected' });
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('not-verified');
+  });
+
+  it('rejects access when verificationStatus is pending even if accountStatus is active', () => {
+    const res = validateStudentAccountState({ accountStatus: 'active', verificationStatus: 'pending' });
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('not-verified');
+  });
+
+  it('rejects access when accountStatus is undefined or missing', () => {
+    const res = validateStudentAccountState({ verificationStatus: 'verified' });
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('invalid-or-inactive-status');
+  });
+
+  it('rejects access when accountStatus is malformed or unexpected', () => {
+    const res = validateStudentAccountState({ accountStatus: 'deactivated', verificationStatus: 'verified' });
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('invalid-or-inactive-status');
   });
 });
 

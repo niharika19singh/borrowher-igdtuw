@@ -140,7 +140,9 @@ export interface PickupZone {
 
 ## 3. Firebase Cloud Functions (2nd Gen) API Contract
 
-All backend Cloud Functions are deployed to the **`asia-south1` (Mumbai)** region.  
+All backend Cloud Functions are configured for deployment to the **`asia-south1` (Mumbai)** region.  
+*Note on Infrastructure:* Regional configuration in code defines target deployment routing. Physical resource residency depends on project creation and resource provisioning in the Google Cloud / Firebase Console.
+
 Frontend developers **MUST** initialize the Firebase Functions SDK with this explicit region:
 
 ```typescript
@@ -157,36 +159,36 @@ const functions = getFunctions(app, 'asia-south1');
 ### 3.2 `updateUserProfile`
 - **Region:** `asia-south1`
 - **Purpose:** Allows student to update elective academic details without exposing administrative fields.
-- **Auth Required:** Authenticated student with `accountStatus === 'active'`.
+- **Auth Required:** Authenticated student with `accountStatus === 'active'` and `verificationStatus === 'verified'`.
 - **Parameters:** `{ displayName?: string, programme?: string, year?: number | string }`
 - **Response:** `{ success: true, uid: string, updates: Partial<UserProfile> }`
 
 ### 3.3 `createListing`
 - **Region:** `asia-south1`
-- **Purpose:** Creates and publishes a new marketplace item.
-- **Auth Required:** Authenticated student. Authoritatively verifies against Firestore that caller has `accountStatus === 'active'` and `verificationStatus === 'verified'`.
+- **Purpose:** Creates and publishes a new marketplace item. Direct client writes to `listings` are blocked by security rules.
+- **Auth Required:** Verified active student. Enforces strict check against live Firestore user profile: `accountStatus === 'active'` and `verificationStatus === 'verified'`. Rejects missing, undefined, or malformed account states.
 - **Validation:** Enforces active category and verified pickup zones (`approvalStatus === 'approved' && active === true`).
 - **Parameters:** `CreateListingInput`
 - **Response:** Created `Listing` object.
 
 ### 3.4 `updateListing`
 - **Region:** `asia-south1`
-- **Purpose:** Modifies an existing listing owned by caller.
-- **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'`.
+- **Purpose:** Modifies an existing listing owned by caller. Direct client writes are blocked by security rules.
+- **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'` (or authorized administrator). Rejects missing, undefined, or malformed account states.
 - **Parameters:** `UpdateListingInput` (includes `listingId`).
 - **Response:** Updated `Listing` object.
 
 ### 3.5 `pauseListing`
 - **Region:** `asia-south1`
-- **Purpose:** Toggles listing between active and paused states.
-- **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'`.
+- **Purpose:** Toggles listing between active and paused states. Direct client writes are blocked by security rules.
+- **Auth Required:** Listing owner with `accountStatus === 'active'` and `verificationStatus === 'verified'` (or authorized administrator). Rejects missing, undefined, or malformed account states.
 - **Parameters:** `{ listingId: string, paused: boolean }`
 - **Response:** `{ success: true, listingId: string, status: 'paused' | 'active' }`
 
 ### 3.6 `getListing`
 - **Region:** `asia-south1`
 - **Purpose:** Retrieves complete listing details along with lender public reputation.
-- **Auth Required:** Verified student or listing owner/admin.
+- **Auth Required:** Live Firestore user document verification: requires `accountStatus === 'active'` AND `verificationStatus === 'verified'`. Stale `verifiedStudent` token claims are rejected. Listing ownership does NOT bypass this verification gate. Administrators retain authorized moderation access without requiring student verification.
 - **Parameters:** `{ listingId: string }`
 - **Response:** `{ listing: Listing, lenderProfile: PublicProfile | null }`
 
@@ -218,23 +220,34 @@ const functions = getFunctions(app, 'asia-south1');
 
 | Media Type | Storage Path Pattern | Max Size | Allowed MIME Types | Access Rules |
 |---|---|---|---|---|
-| Listing Images | `listing-images/{uid}/{listingId}/{fileName}` | 5 MB | `image/jpeg`, `image/png`, `image/webp` | Upload: Verified owner only. Read: Verified students. |
+| Listing Images | `listing-images/{uid}/{listingId}/{fileName}` | 5 MB | `image/jpeg`, `image/png`, `image/webp` | **Upload:** Owner UID check + cross-service Firestore verification (`accountStatus === 'active'` and `verificationStatus === 'verified'`). **Read:** Cross-service verified active students or platform admins. |
 | Transaction Evidence | `booking-evidence/{bookingId}/{uid}/{fileName}` | 5 MB | N/A | **Locked down (`allow read, write: if false;`).** Reserved for Backend Dev 2 participant authorization. |
+
+### 4.1 Cross-Service Rule Accounting & Resource Limits
+- Cloud Storage Security Rules evaluate `firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))` and `firestore.get(...)` to prevent students with stale JWT claims from reading or uploading images if suspended.
+- Each cross-service evaluation incurs 1 Firestore document read operation.
+- Storage security rules enforce a maximum limit of 10 Firestore read calls per rule evaluation.
+- Calls are short-circuited: unauthenticated requests or requests without `verifiedStudent` claims never query Firestore, avoiding unnecessary billable operations.
 
 ---
 
-## 5. Administrator Provisioning Protocol (`bootstrap-admin.ts`)
+## 5. Administrator Provisioning & Administrative Scripts
 
-To prevent unauthorized elevation, no public endpoint can grant the initial admin role. Administrator bootstrapping uses a restricted CLI procedure:
+To prevent accidental modifications to live infrastructure, all administrative scripts (`bootstrap-admin.ts`, `seed-categories.ts`, `seed-pickup-zones.ts`) require explicit project selection:
 
 ```bash
-# Provisioning requires an existing, email-verified Firebase Auth account and explicit confirmation:
-npm run bootstrap:admin -- --email faculty-admin@igdtuw.ac.in --confirm
+# Explicit project ID is required via CLI flag or environment variable (implicit defaults are prohibited):
+npm run bootstrap:admin -- --project demo-borrowher --email faculty-admin@igdtuw.ac.in --confirm
+
+# Seeding proposed categories and pickup zones:
+npm run seed:categories -- --project demo-borrowher
+npm run seed:pickup-zones -- --project demo-borrowher
 ```
 
-**Security Rules Enforced by Bootstrap Script:**
-1. Candidate account **MUST** already be registered in Firebase Authentication.
-2. Candidate's email address **MUST** be verified (`emailVerified === true`).
-3. Confirmation flag (`--confirm` or `CONFIRM_BOOTSTRAP=true`) is strictly required.
-4. Initial public profile rating is neutral (`averageRating: 0.0, totalReviews: 0`).
-5. Audit event (`BOOTSTRAP_INITIAL_ADMIN`) is written to `auditLogs`.
+**Security Safeguards Enforced:**
+1. **Explicit Project Selection:** Rejects execution if `--project <projectId>` or `FIREBASE_PROJECT_ID` is missing.
+2. **Environment Prominence:** Prints target project ID and execution mode (`Local Firebase Emulator` vs `LIVE / PRODUCTION CLOUD`) before executing.
+3. **Pre-existing Verified Account:** Candidate account **MUST** already be registered in Firebase Authentication with `emailVerified === true`.
+4. **Mandatory Confirmation:** Confirmation flag (`--confirm` or `CONFIRM_BOOTSTRAP=true`) is strictly required.
+5. **Neutral Baseline:** Initial public profile rating is neutral (`averageRating: 0.0, totalReviews: 0`).
+6. **Immutable Audit Logging:** Audit event (`BOOTSTRAP_INITIAL_ADMIN`) is written to `auditLogs`.

@@ -2,13 +2,14 @@ import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import * as admin from 'firebase-admin';
 import { bootstrapAdmin } from '../../scripts/bootstrap-admin';
 
-const projectId = process.env.FIREBASE_PROJECT_ID || 'borrowher-bootstrap-test';
+const projectId = process.env.FIREBASE_PROJECT_ID || 'demo-borrowher';
 
 describe('Admin Bootstrap Integration Test Suite', () => {
   let auth: admin.auth.Auth;
   let db: admin.firestore.Firestore;
 
   beforeAll(async () => {
+    process.env.FIREBASE_PROJECT_ID = projectId;
     if (admin.apps.length === 0) {
       admin.initializeApp({ projectId });
     }
@@ -20,11 +21,29 @@ describe('Admin Bootstrap Integration Test Suite', () => {
     // Clean up
   });
 
+  it('rejects bootstrap when explicit project ID is omitted and no environment variable is set', async () => {
+    const savedProject = process.env.FIREBASE_PROJECT_ID;
+    const savedGcloud = process.env.GCLOUD_PROJECT;
+    delete process.env.FIREBASE_PROJECT_ID;
+    delete process.env.GCLOUD_PROJECT;
+
+    await expect(
+      bootstrapAdmin({
+        targetEmail: 'admin@igdtuw.ac.in',
+        confirmed: true,
+      })
+    ).rejects.toThrow('Firebase Project ID is required');
+
+    if (savedProject) process.env.FIREBASE_PROJECT_ID = savedProject;
+    if (savedGcloud) process.env.GCLOUD_PROJECT = savedGcloud;
+  });
+
   it('rejects provisioning when target Firebase Auth account does not exist', async () => {
     await expect(
       bootstrapAdmin({
         targetEmail: 'nonexistent-admin@igdtuw.ac.in',
         confirmed: true,
+        projectId,
       })
     ).rejects.toThrow('Firebase Auth account not found');
   });
@@ -46,6 +65,7 @@ describe('Admin Bootstrap Integration Test Suite', () => {
       bootstrapAdmin({
         targetEmail: unverifiedEmail,
         confirmed: true,
+        projectId,
       })
     ).rejects.toThrow('email address has not been verified');
   });
@@ -66,6 +86,7 @@ describe('Admin Bootstrap Integration Test Suite', () => {
     const result = await bootstrapAdmin({
       targetEmail: candidateEmail,
       confirmed: true,
+      projectId,
     });
 
     expect(result.uid).toBe(candidateUser.uid);
