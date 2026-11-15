@@ -3353,3 +3353,16 @@ small {
 .handwritten {
   white-space: nowrap;
 }
+
+/* Keep navigation and account controls visible in short preview windows. */
+@media (max-height: 850px) {
+  .sidebar-note {
+    display: none;
+  }
+}
+.sidebar {
+  overflow-y: auto;
+}
+.sidebar-bottom {
+  flex-shrink: 0;
+}
