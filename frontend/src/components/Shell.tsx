@@ -19,7 +19,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "../firebase/client";
 import { useAuth } from "../app/AuthContext";
 import { useDemo, useHref } from "../app/DemoContext";
-import { Avatar, Brand, Bow, ErrorMessage } from "./ui";
+import { Avatar, Brand, Bow, ErrorMessage, Loading } from "./ui";
 import { readableError } from "../utils/identity";
 
 export function Shell() {
@@ -32,7 +32,8 @@ export function Shell() {
   const name = demo.enabled
     ? demo.name
     : session.profile?.displayName || "Student";
-  const uid = demo.enabled ? "me" : session.user!.uid;
+  const uid = demo.enabled ? "me" : session.user?.uid;
+  if (!uid) return <Loading />;
   const unread = demo.notifications.filter((n) => !n.read).length;
   const links = [
     { path: "/dashboard", label: "My dashboard", icon: LayoutDashboard },
