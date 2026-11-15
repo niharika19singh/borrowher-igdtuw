@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-blush-50: #fdf6f8;
+  --color-blush-100: #fceef2;
+  --color-blush-200: #f9dce5;
+  --color-blush-300: #f4c0d0;
+  --color-blush-400: #e99ab4;
+  --color-blush-500: #d97a9a;
+  --color-blush-600: #c45a7c;
+  --color-blush-700: #a34463;
+  --color-blush-800: #873a54;
+  --color-blush-900: #723349;
+
+  --color-rose-dust: #c9a0b0;
+  --color-burgundy: #8b3a4a;
+  --color-cream: #faf7f5;
+  --color-soft-pink: #f8e8ee;
+  --color-deep-rose: #b76e79;
+  --color-accent-pink: #e8b4bc;
+  --color-nav-pink: #f3d4dc;
+  --color-card-bg: #ffffff;
+  --color-text-primary: #2d1f24;
+  --color-text-secondary: #6b4f57;
+  --color-muted: #9a7a84;
+
+  --font-serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-script: "Dancing Script", "Great Vibes", cursive;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-cream text-text-primary font-sans antialiased;
+    margin: 0;
+  }
+  #root {
+    min-height: 100vh;
+  }
+}
