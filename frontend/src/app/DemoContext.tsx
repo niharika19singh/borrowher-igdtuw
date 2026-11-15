@@ -46,7 +46,7 @@ const initialBookings: BookingView[] = [
   },
   {
     id: "book",
-    title: "Data Structures & Algorithms",
+    title: "Books from my shelf",
     category: "Books",
     art: "book",
     owner: "You",
@@ -65,7 +65,7 @@ const initialBookings: BookingView[] = [
   },
   {
     id: "umbrella",
-    title: "A little pink umbrella",
+    title: "Umbrella",
     category: "Daily essentials",
     art: "umbrella",
     owner: "You",
@@ -131,7 +131,7 @@ const initialNotifications: NotificationView[] = [
   {
     id: "n2",
     title: "A new borrowing request",
-    body: "Isha would love to borrow your DSA textbook. Take a look at her request.",
+    body: "Isha would love to borrow a book from your shelf. Take a look at her request.",
     time: "2026-11-15T11:30:00+05:30",
     read: false,
     href: "/bookings/book",

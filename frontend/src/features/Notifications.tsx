@@ -93,11 +93,11 @@ export function NotificationsPage() {
         ) : (
           <Empty
             title={
-              unreadOnly ? "You’re all caught up." : "Your little update corner"
+              unreadOnly ? "You’re all caught up." : "No notifications yet"
             }
           >
             {demo.enabled
-              ? "We’ll keep the important little things here."
+              ? "Booking updates and campus requests will appear here."
               : "Live notifications will appear when the campus notification service is connected."}
           </Empty>
         )}

@@ -66,7 +66,7 @@ export function EmergencyPage() {
       <PageHeading
         eyebrow="BECAUSE CAMPUS HAS YOUR BACK"
         title="Emergency Essentials"
-        description="For those ‘does anyone have a…?’ moments. A little help is closer than you think."
+        description="Post an urgent request or help another student with an essential."
         action={
           <button
             className="button primary"
@@ -81,10 +81,10 @@ export function EmergencyPage() {
       <div className="emergency-banner">
         <HeartHandshake size={38} strokeWidth={1.2} />
         <div>
-          <h2>A little urgency. A lot of kindness.</h2>
+          <h2>Need something at short notice?</h2>
           <p>
             Need something for an exam, a practical, or an unexpected moment?
-            Ask your campus circle.
+            Ask another IGDTUW student.
           </p>
         </div>
         <Zap size={30} strokeWidth={1} />

@@ -26,7 +26,6 @@ import {
   Bow,
   Brand,
   ErrorMessage,
-  ItemArt,
   Loading,
   SuccessMessage,
 } from "../components/ui";
@@ -43,7 +42,7 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
       <div className="auth-header">
         <Brand />
         <Link to="/demo/dashboard" className="text-link">
-          Take a little look around <ArrowRight size={15} />
+          Explore the demo <ArrowRight size={15} />
         </Link>
       </div>
       <main className="auth-grid">
@@ -53,40 +52,37 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
             EXCLUSIVELY FOR IGDTUW
           </span>
           <h1>
-            Your campus. <br />
-            Your community.
+            Borrow. Share.
             <br />
-            <em>Your sharing circle.</em>
+            <em>Repeat.</em>
           </h1>
           <p>
-            For the calculator before an exam, the book you’ve been looking for,
-            and the little things in between.
+            Borrow everyday essentials from students at IGDTUW — from a
+            calculator before an exam to a lab coat for your next practical.
           </p>
-          <div className="auth-art">
-            <span className="art-orbit orbit-one" />
-            <span className="art-orbit orbit-two" />
-            <ItemArt kind="book" />
-            <ItemArt kind="calculator" />
-            <ItemArt kind="umbrella" />
-            <Bow className="story-bow" />
-            <span className="story-tag">
-              <Heart size={14} />
-              Borrow a little. Belong a little more.
-            </span>
-          </div>
+          <figure className="auth-campus-photo">
+            <img
+              src="/images/igdtuw-campus.jpg"
+              alt="The academic building and lawn at IGDTUW"
+              width={1280}
+              height={720}
+            />
+            <figcaption>IGDTUW · Kashmere Gate, Delhi</figcaption>
+          </figure>
           <div className="story-footer">
             <ShieldCheck size={20} />
             <span>
-              A circle just for our campus.
+              A community for IGDTUW students.
               <br />
-              <strong>College email. Verified community.</strong>
+              <strong>Sign up with your @igdtuw.ac.in email.</strong>
             </span>
           </div>
         </section>
         <section className="auth-form-panel">{children}</section>
       </main>
       <footer className="auth-footer">
-        BorrowHer · The IGDTUW Campus Sharing Economy <Heart size={12} />
+        BorrowHer · The IGDTUW Campus Sharing Economy{" "}
+        <a href="/images/credits.html">Photo credits</a>
       </footer>
     </div>
   );
@@ -193,14 +189,14 @@ export function AuthPage() {
         </span>
         <p className="eyebrow">
           {register
-            ? "A LITTLE SHARING STARTS HERE"
+            ? "JOIN YOUR CAMPUS COMMUNITY"
             : reset
               ? "LET’S GET YOU BACK IN"
               : "YOUR CAMPUS CIRCLE IS WAITING"}
         </p>
         <h2>
           {register
-            ? "Find your circle."
+            ? "Create your account."
             : reset
               ? "Forgot your password?"
               : "Welcome back."}
@@ -320,7 +316,7 @@ export function AuthPage() {
             {busy
               ? "Just a moment…"
               : register
-                ? "Join the BorrowHer circle"
+                ? "Create account"
                 : reset
                   ? "Send reset link"
                   : "Sign in to BorrowHer"}
@@ -335,7 +331,7 @@ export function AuthPage() {
             </Link>
           ) : register ? (
             <>
-              Already part of the circle? <Link to="/auth/login">Sign in</Link>
+              Already have an account? <Link to="/auth/login">Sign in</Link>
             </>
           ) : (
             <>
@@ -346,7 +342,7 @@ export function AuthPage() {
         </p>
         <div className="auth-trust">
           <ShieldCheck size={15} />
-          College email verification keeps our circle campus-only.
+          Use your college email to verify that you study at IGDTUW.
         </div>
       </div>
     </AuthFrame>
@@ -432,7 +428,7 @@ export function VerifyPage() {
             "Contact your campus administrator to review your verification."
           ) : (
             <>
-              We’re keeping this circle just for IGDTUW students.
+              BorrowHer is for verified IGDTUW students.
               <br />
               <strong>{session.user.email}</strong>
             </>

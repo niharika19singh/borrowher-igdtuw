@@ -1,0 +1,52 @@
+[
+  {
+    "asset": "books.jpg",
+    "label": "Second-hand books",
+    "title": "A pile of books stacked on top of each other",
+    "artist": "Urja Bhatt",
+    "license": "Unsplash License",
+    "licenseUrl": "https://unsplash.com/license",
+    "source": "https://unsplash.com/photos/a-pile-of-books-stacked-on-top-of-each-other-q_1b9yP41OI",
+    "changes": "Downloaded at 800px width; cropped to fit the layout with CSS."
+  },
+  {
+    "asset": "calculator.jpg",
+    "label": "Scientific calculator",
+    "title": "Casio fx-991ES Calculator New.jpg",
+    "artist": "Stefan-Xp",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "source": "https://commons.wikimedia.org/wiki/File:Casio_fx-991ES_Calculator_New.jpg",
+    "changes": "Downloaded at a reduced resolution where available; cropped to fit the layout with CSS."
+  },
+  {
+    "asset": "igdtuw-campus.jpg",
+    "label": "IGDTUW campus",
+    "title": "Indira Gandhi Technical University for Women, campus long shot 2.jpg",
+    "artist": "Fredericknoronha",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Indira_Gandhi_Technical_University_for_Women,_campus_long_shot_2.jpg",
+    "changes": "Downloaded at a reduced resolution where available; cropped to fit the layout with CSS."
+  },
+  {
+    "asset": "lab-coat.jpg",
+    "label": "Lab coat",
+    "title": "Laboratory Coat.jpg",
+    "artist": "Ronggy",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Laboratory_Coat.jpg",
+    "changes": "Downloaded at a reduced resolution where available; cropped to fit the layout with CSS."
+  },
+  {
+    "asset": "umbrella.jpg",
+    "label": "Pink umbrella",
+    "title": "Red umbrella in Książ Castle.jpg",
+    "artist": "Jakub T. Jankiewicz",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Red_umbrella_in_Ksi%C4%85%C5%BC_Castle.jpg",
+    "changes": "Downloaded at a reduced resolution where available; cropped to fit the layout with CSS."
+  }
+]

@@ -257,7 +257,7 @@ export function AdminPage() {
       <PageHeading
         eyebrow="LOOKING AFTER OUR LITTLE COMMUNITY"
         title="Campus care console"
-        description="Review student accounts, keep listings helpful, and make campus sharing a little safer."
+        description="Review student accounts, listings and campus pickup zones."
         action={
           <Badge tone="green">
             <ShieldCheck size={14} />

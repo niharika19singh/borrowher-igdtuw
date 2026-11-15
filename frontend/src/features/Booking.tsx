@@ -12,7 +12,7 @@ import { useDemo, useHref } from "../app/DemoContext";
 import {
   Avatar,
   Empty,
-  ItemArt,
+  ItemPhoto,
   PageHeading,
   StatusBadge,
   formatDate,
@@ -31,7 +31,7 @@ export function BookingPage() {
         <PageHeading
           eyebrow="YOUR SHARING STORY"
           title="Booking details"
-          description="All the little details, in one place."
+          description="Booking details and handover updates."
         />
         <Empty title="We couldn’t find this booking">
           {demo.enabled
@@ -65,7 +65,11 @@ export function BookingPage() {
     ),
   );
   const steps = [
-    { title: "Request sent", note: "Your sharing story begins.", done: true },
+    {
+      title: "Request sent",
+      note: "Waiting for the lender to respond.",
+      done: true,
+    },
     {
       title: "Lender accepts",
       note: "Dates and terms agreed together.",
@@ -97,7 +101,7 @@ export function BookingPage() {
       <div className="detail-grid">
         <div>
           <section className="panel booking-summary">
-            <ItemArt kind={booking.art} />
+            <ItemPhoto kind={booking.art} />
             <div>
               <span className="category-label">{booking.category}</span>
               <h2>{booking.title}</h2>
@@ -155,7 +159,7 @@ export function BookingPage() {
             </div>
           </section>
           <section className="panel detail-panel">
-            <h2>A little clarity on costs</h2>
+            <h2>Cost breakdown</h2>
             <dl className="costs">
               <div>
                 <dt>

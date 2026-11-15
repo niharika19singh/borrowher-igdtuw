@@ -37,7 +37,7 @@ For emulators, set `VITE_USE_EMULATORS=true` only in local development and start
 
 Equivalent `/demo/...` routes use only sample data and never call Firebase. A visible demo strip and admin-preview labels distinguish these screens from live operations. Demo controls can simulate the second participant; production never uses the local state machine.
 
-`/` currently forwards to sign-in. `/marketplace` is an explicit FE1 integration placeholder. FE1 should replace these entries with their landing and discovery routes and may reuse the shell, design variables and `ItemArt` components. No marketplace or listing implementation is claimed by this branch.
+`/` currently forwards to sign-in. `/marketplace` is an explicit FE1 integration placeholder. FE1 should replace these entries with their landing and discovery routes and may reuse the shell, design variables and `ItemPhoto` components. No marketplace or listing implementation is claimed by this branch.
 
 ## Confirmed BE1 integration
 
@@ -71,3 +71,7 @@ Owner: Palak Batra (`PalakBatra22`). Branch: `feat/palak/frontend-2-workflows`. 
 This branch is submitted through PalakBatra22 for team review. Backend integration remains pending as described above. The FE1 implementation is on the separate `nancy` branch (reviewed at `a7ec3a7e86793849d51482dfbeae007cf537c55b`), where the app lives at the repository root. Agree a single app root, router, shared logo, typography and design tokens when integrating FE1 and FE2; this PR preserves FE1 ownership and does not merge that branch.
 
 For Vercel, set the project root to `frontend`, build command to `npm run build`, output directory to `dist`, and use separate staging/production web config values. `frontend/vercel.json` supplies SPA route rewrites.
+
+## Photography and UI refresh
+
+The dashboard, authentication story and profile cover use a locally bundled IGDTUW campus photograph. Booking cards and details use real sample product photos, with a neutral fallback if a photo fails to load. Copy uses straightforward student-facing labels. Campus and item photo attribution, sources and licenses are in [photo-credits.md](photo-credits.md), also linked from both public app footers. The book sample and its notification now describe generic second-hand books to match its photo. Product photos are demo examples, not actual student listings.

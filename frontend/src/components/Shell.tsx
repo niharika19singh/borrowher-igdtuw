@@ -91,7 +91,7 @@ export function Shell() {
             <X />
           </button>
         </div>
-        <span className="sidebar-label">YOUR LITTLE CAMPUS CIRCLE</span>
+        <span className="sidebar-label">YOUR IGDTUW COMMUNITY</span>
         <nav>
           {links.map(({ path, label, icon: Icon, count }) => (
             <NavLink
@@ -110,13 +110,10 @@ export function Shell() {
         </nav>
         <div className="sidebar-note">
           <Bow />
-          <h3>
-            A little sharing.
-            <br />A lot of belonging.
-          </h3>
-          <p>Make campus life a little easier, together.</p>
+          <h3>Have something spare?</h3>
+          <p>Share everyday essentials with other students.</p>
           <Link to={href("/emergency")}>
-            Lend a helping hand <Heart size={13} />
+            See urgent requests <Heart size={13} />
           </Link>
         </div>
         <div className="sidebar-bottom">
@@ -196,7 +193,10 @@ export function Shell() {
           <Outlet />
         </main>
         <footer className="app-footer">
-          <span>Made for the little things that bring us together.</span>
+          <span>
+            For the IGDTUW community.{" "}
+            <a href="/images/credits.html">Photo credits</a>
+          </span>
           <span>
             Borrow. Share. <em>Repeat.</em> <Heart size={12} />
           </span>

@@ -72,7 +72,7 @@ export function ProfilePage() {
         <PageHeading
           eyebrow="YOUR CAMPUS CIRCLE"
           title="Student profile"
-          description="A little introduction goes a long way."
+          description="Student details and exchange history."
         />
         <ErrorMessage>{error}</ErrorMessage>
         <Empty title="This profile isn’t available">
@@ -125,9 +125,9 @@ export function ProfilePage() {
   return (
     <>
       <PageHeading
-        eyebrow="A FAMILIAR FACE IN THE CIRCLE"
-        title={own ? "Your little introduction." : "Meet your campus circle."}
-        description="Good sharing starts with knowing a little about each other."
+        eyebrow="STUDENT PROFILE"
+        title={own ? "My profile" : "Student profile"}
+        description="Your student details and exchange history."
         action={
           own && (
             <button
@@ -146,10 +146,14 @@ export function ProfilePage() {
       <SuccessMessage>{message}</SuccessMessage>
       <div className="profile-grid">
         <section className="panel profile-card">
-          <div className="profile-cover">
-            <span>✧</span>
-            <Heart size={34} strokeWidth={1} />
-            <span>✳</span>
+          <div className="profile-cover campus-profile-cover">
+            <img
+              src="/images/igdtuw-campus.jpg"
+              alt="IGDTUW campus"
+              width={1280}
+              height={720}
+            />
+            <span className="profile-cover-label">IGDTUW · DELHI</span>
           </div>
           <Avatar className="profile-avatar" name={displayName} />
           <h2>{displayName}</h2>
@@ -182,11 +186,11 @@ export function ProfilePage() {
         <div>
           <section className="panel detail-panel">
             <h2>
-              <BookHeart size={21} />A little trust, built together
+              <BookHeart size={21} />
+              Verification & reviews
             </h2>
             <p className="muted">
-              Every completed exchange is another small connection in our campus
-              community.
+              Check verification and reviews before arranging an exchange.
             </p>
             <div className="trust-row">
               <ShieldCheck size={21} />
@@ -206,9 +210,7 @@ export function ProfilePage() {
               <Star size={21} />
               <div>
                 <strong>
-                  {reviews
-                    ? "Reviewed by the community"
-                    : "A fresh start in the circle"}
+                  {reviews ? "Reviewed by the community" : "No reviews yet"}
                 </strong>
                 <p>
                   {reviews
@@ -220,7 +222,7 @@ export function ProfilePage() {
             <div className="trust-row">
               <Heart size={21} />
               <div>
-                <strong>Care makes the circle work</strong>
+                <strong>Arrange a safe handover</strong>
                 <p>
                   Verification is a trust indicator. Always agree on terms and
                   meet in an approved public zone.
@@ -257,7 +259,7 @@ export function ProfilePage() {
                 <div>
                   <dt>
                     <CalendarDays size={14} />
-                    Joined the circle
+                    Member since
                   </dt>
                   <dd>
                     {demo.enabled
@@ -278,7 +280,7 @@ export function ProfilePage() {
       </div>
       {editing && (
         <Modal
-          title="A little more about you"
+          title="Edit your profile"
           onClose={() => !busy && setEditing(false)}
         >
           <form onSubmit={save} className="stack-form">

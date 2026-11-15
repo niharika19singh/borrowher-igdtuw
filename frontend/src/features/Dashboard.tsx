@@ -20,9 +20,8 @@ import {
   ArrowLink,
   Avatar,
   Badge,
-  Bow,
   Empty,
-  ItemArt,
+  ItemPhoto,
   StatusBadge,
   formatDate,
   rupees,
@@ -38,7 +37,7 @@ export function BookingCard({ booking }: { booking: BookingView }) {
         tabIndex={-1}
         aria-hidden="true"
       >
-        <ItemArt kind={booking.art} />
+        <ItemPhoto kind={booking.art} />
       </Link>
       <div className="booking-card-body">
         <div className="card-topline">
@@ -74,7 +73,7 @@ export function BookingCard({ booking }: { booking: BookingView }) {
                 <small> / day</small>
               </>
             ) : (
-              <strong>Shared with love</strong>
+              <strong>Free to borrow</strong>
             )}
           </span>
           <Link to={href(`/bookings/${booking.id}`)} className="card-action">
@@ -125,11 +124,11 @@ export function Dashboard({
       <header className="dashboard-heading">
         <div>
           <p className="eyebrow">
-            <span className="tiny-flower">✳</span>YOUR EVERYDAY, A LITTLE EASIER
+            <span className="tiny-flower">✳</span>YOUR CAMPUS, CONNECTED
           </p>
           <h1>
             {bookingsOnly ? (
-              "Your sharing story."
+              "My bookings"
             ) : (
               <>
                 Hello, {name}
@@ -139,8 +138,8 @@ export function Dashboard({
           </h1>
           <p className="muted">
             {bookingsOnly
-              ? "Every borrow, every lend, all in one little place."
-              : "A little borrowing. A little lending. A whole lot of community."}
+              ? "Track your requests, pickups and returns."
+              : "Here’s what’s happening with your borrows and lends."}
           </p>
         </div>
         <span className="date-label">
@@ -157,54 +156,64 @@ export function Dashboard({
       </header>
       {!bookingsOnly && (
         <>
-          <section className="welcome-banner">
-            <div className="welcome-copy">
-              <span className="eyebrow">YOUR CAMPUS SHARING CIRCLE</span>
+          <section className="campus-hero" aria-label="BorrowHer at IGDTUW">
+            <div className="campus-hero-copy">
+              <span className="eyebrow">BY STUDENTS, FOR STUDENTS</span>
               <h2>
-                Small things.
+                Borrow. Share.
                 <br />
-                <em>Shared possibilities.</em>
+                <em>Repeat.</em>
               </h2>
               <p>
-                Keep track of what you borrow, care for what you lend,
-                <br className="desktop-only" />
-                and make a little room for kindness.
+                A calculator for tomorrow’s exam. A lab coat for the week.
+                <br className="desktop-only" /> Find a helping hand on your own
+                campus.
               </p>
-              <Link to={href("/emergency")} className="button primary">
-                Lend a helping hand <ArrowRight size={15} />
+              <Link to={href("/bookings")} className="button primary">
+                My bookings <ArrowRight size={15} />
               </Link>
+              <span className="campus-hero-note">
+                <ShieldCheck size={14} /> For verified IGDTUW students
+              </span>
             </div>
-            <div className="welcome-art" aria-hidden="true">
-              <span className="welcome-oval" />
-              <span className="art-spark spark-one">✧</span>
-              <span className="art-spark spark-two">✳</span>
-              <ItemArt kind="book" />
-              <ItemArt kind="umbrella" />
-              <Bow className="banner-bow" />
-              <span className="handwritten">better together</span>
-              <span className="welcome-heart">♡</span>
-            </div>
+            <figure className="campus-hero-photo">
+              <img
+                src="/images/igdtuw-campus.jpg"
+                alt="IGDTUW academic building and green campus lawn"
+                width={1280}
+                height={720}
+                fetchPriority="high"
+              />
+              <figcaption>
+                <span>OUR CAMPUS</span>
+                <strong>IGDTUW, Delhi</strong>
+              </figcaption>
+            </figure>
           </section>
+          <p className="campus-essentials">
+            Calculators <span>·</span> Lab coats <span>·</span> Books{" "}
+            <span>·</span> Everyday essentials
+          </p>
           <section className="stats-grid" aria-label="Your sharing overview">
             {[
               {
                 label: "Currently borrowing",
                 value: borrowing.length.toString().padStart(2, "0"),
-                sub: "Little things, big help",
+                sub: "Items to return",
                 icon: ArrowDownLeft,
                 color: "rose",
               },
               {
                 label: "Currently lending",
                 value: lending.length.toString().padStart(2, "0"),
-                sub: "Making someone’s day",
+                sub: "Items shared with students",
                 icon: ArrowUpRight,
                 color: "sage",
               },
               {
                 label: "Requests to review",
                 value: pending.length.toString().padStart(2, "0"),
-                sub: "A little hello from campus",
+                sub: "Waiting for your reply",
                 icon: Clock3,
                 color: "peach",
               },
@@ -214,7 +223,7 @@ export function Dashboard({
                   .filter((b) => b.status === "completed")
                   .length.toString()
                   .padStart(2, "0"),
-                sub: "Shared with care",
+                sub: "Items returned",
                 icon: Heart,
                 color: "lavender",
               },
@@ -239,9 +248,7 @@ export function Dashboard({
             <div className="section-heading">
               <h2>
                 <BookHeart size={21} strokeWidth={1.5} />
-                {bookingsOnly
-                  ? "All your bookings"
-                  : "Your little borrowing corner"}
+                {bookingsOnly ? "All your bookings" : "Your bookings"}
               </h2>
               {!bookingsOnly && (
                 <ArrowLink to={href("/bookings")}>View all</ArrowLink>
@@ -281,11 +288,7 @@ export function Dashboard({
                 ))
               ) : (
                 <Empty
-                  title={
-                    search
-                      ? "No little matches yet"
-                      : "Your next sharing story starts here"
-                  }
+                  title={search ? "No matching bookings" : "No bookings yet"}
                 >
                   {search
                     ? "Try a different item or student name."
@@ -302,7 +305,7 @@ export function Dashboard({
                 <Heart size={22} strokeWidth={1.3} />
               </span>
               <div>
-                <h3>A little care goes a long way.</h3>
+                <h3>Before you hand it over</h3>
                 <p>
                   Return on time, keep in touch, and treat every item like your
                   own.
@@ -369,8 +372,7 @@ export function Dashboard({
                 ))
             ) : (
               <p className="quiet-note">
-                A clear calendar, a little breathing room. Your upcoming
-                exchanges will appear here.
+                Your upcoming exchanges will appear here.
               </p>
             )}
           </section>
@@ -378,12 +380,11 @@ export function Dashboard({
             <div className="emergency-icon">
               <Zap size={26} strokeWidth={1.3} />
             </div>
-            <span className="eyebrow">
-              A LITTLE HELP, RIGHT WHEN IT MATTERS
-            </span>
+            <span className="eyebrow">NEED SOMETHING URGENTLY?</span>
             <h2>
-              Campus has <br />
-              your back.
+              Ask someone
+              <br />
+              on campus.
             </h2>
             <p>
               Last-minute exam essentials?
@@ -403,9 +404,9 @@ export function Dashboard({
               <Sparkles size={17} />
             </span>
             <p>
-              Every little exchange makes
+              Borrow what you need.
               <br />
-              our campus feel more like home.
+              Lend what you can.
             </p>
           </div>
         </aside>
