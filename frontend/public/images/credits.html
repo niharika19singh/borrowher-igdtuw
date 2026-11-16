@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/theme-init.js"></script>
     <title>Photo credits · BorrowHer</title>
     <style>
       body {
@@ -58,6 +59,31 @@
         img {
           margin-bottom: 12px;
         }
+      }
+      :root {
+        --page: oklch(0.985 0.008 70);
+        --text: oklch(0.3 0.025 345);
+        --link: oklch(0.43 0.105 350);
+        --line: oklch(0.37 0.03 345 / 0.14);
+      }
+      :root[data-theme="dark"] {
+        --page: oklch(0.18 0.018 340);
+        --text: oklch(0.94 0.012 35);
+        --link: oklch(0.81 0.09 350);
+        --line: oklch(0.94 0.015 350 / 0.13);
+      }
+      html,
+      body {
+        background: var(--page);
+        color: var(--text);
+        min-height: 100dvh;
+      }
+      a {
+        color: var(--link);
+      }
+      article,
+      footer {
+        border-color: var(--line);
       }
     </style>
   </head>

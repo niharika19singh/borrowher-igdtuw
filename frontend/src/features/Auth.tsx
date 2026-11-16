@@ -34,6 +34,8 @@ import {
   normalizeEmail,
   readableError,
 } from "../utils/identity";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { IconSwap } from "../components/IconSwap";
 import type { EnsureUserProfileResponse } from "../types/backend";
 
 function AuthFrame({ children }: { children: React.ReactNode }) {
@@ -41,9 +43,12 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
     <div className="auth-page">
       <div className="auth-header">
         <Brand />
-        <Link to="/demo/dashboard" className="text-link">
-          Explore the demo <ArrowRight size={15} />
-        </Link>
+        <div className="auth-header-actions">
+          <ThemeToggle />
+          <Link to="/demo/dashboard" className="text-link">
+            Explore the demo <ArrowRight size={15} />
+          </Link>
+        </div>
       </div>
       <main className="auth-grid">
         <section className="auth-story">
@@ -52,8 +57,7 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
             EXCLUSIVELY FOR IGDTUW
           </span>
           <h1>
-            Borrow. Share.
-            <br />
+            Borrow. Share. <br />
             <em>Repeat.</em>
           </h1>
           <p>
@@ -273,7 +277,11 @@ export function AuthPage() {
                     aria-pressed={showPassword}
                     onClick={() => setShowPassword((value) => !value)}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    <IconSwap
+                      swapped={showPassword}
+                      first={<Eye size={18} />}
+                      second={<EyeOff size={18} />}
+                    />
                   </button>
                 </div>
               </label>

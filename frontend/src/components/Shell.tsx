@@ -20,6 +20,7 @@ import { auth } from "../firebase/client";
 import { useAuth } from "../app/AuthContext";
 import { useDemo, useHref } from "../app/DemoContext";
 import { Avatar, Brand, Bow, ErrorMessage, Loading } from "./ui";
+import { ThemeToggle } from "./ThemeToggle";
 import { readableError } from "../utils/identity";
 
 export function Shell() {
@@ -166,6 +167,7 @@ export function Shell() {
               <span />
               IGDTUW community
             </span>
+            <ThemeToggle />
             <Link
               className="notification-button icon-button"
               aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}

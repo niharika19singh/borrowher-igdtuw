@@ -382,8 +382,7 @@ export function Dashboard({
             </div>
             <span className="eyebrow">NEED SOMETHING URGENTLY?</span>
             <h2>
-              Ask someone
-              <br />
+              Ask someone <br />
               on campus.
             </h2>
             <p>
