@@ -88,7 +88,7 @@ Purchasing every item individually imposes unnecessary financial burdens. **Borr
 
 ---
 
-## 5. Directory Structure
+## 5. Directory  Structure
 
 ```
 borrowher-igdtuw/
