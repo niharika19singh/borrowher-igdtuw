@@ -51,3 +51,4 @@ credentials.json
 # Testing & Coverage
 coverage/
 .nyc_output/
+.vercel
