@@ -173,28 +173,31 @@ npm install
 
 # Install Cloud Functions dependencies
 cd functions && npm install && cd ..
+
+# Install Frontend (React + Vite + TypeScript) dependencies
+cd frontend && npm ci && cd ..
 ```
 
 ### Running Tests
-BorrowHer includes 114 automated unit, security rules, and integration tests:
+BorrowHer includes 151 automated backend, frontend, security rules, and integration tests:
 
 ```bash
-# Run unit tests (Zod validators, partial update invariants, error handling) - 44 tests
+# Run backend (44 tests) + frontend (37 tests) unit test suites - 81 tests
 npm run test
 
-# Run Firestore and Storage security rules and bootstrap tests against local emulators - 70 tests
+# Run Firestore and Storage security rules, transaction concurrency, and bootstrap tests against local emulators - 70 tests
 npm run test:rules
 
-# Run all test suites in sequence (114 tests total)
+# Run all test suites in sequence (151 tests total)
 npm run test:all
 ```
 
 ### Building & Linting
 ```bash
-# Build Cloud Functions TypeScript
+# Build Cloud Functions TypeScript + Frontend Vite production bundle
 npm run build
 
-# Typecheck and lint Functions
+# Typecheck and lint Backend + Frontend
 npm run lint
 ```
 
