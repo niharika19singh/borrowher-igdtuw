@@ -23,6 +23,7 @@ lib/
 functions/lib/
 out/
 build/
+*.tsbuildinfo
 
 # Environment and secrets
 .env
