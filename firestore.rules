@@ -1,0 +1,163 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // AUTHORIZATION HELPERS
+    // =========================================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 'admin' in request.auth.token && request.auth.token.admin == true;
+    }
+
+    function isVerifiedStudent() {
+      return isAuthenticated()
+        && 'verifiedStudent' in request.auth.token
+        && request.auth.token.verifiedStudent == true
+        && (!('accountStatus' in request.auth.token) || request.auth.token.accountStatus != 'suspended')
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'verified';
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // =========================================================================
+    // USER PROFILES & PRIVATE IDENTITY
+    // =========================================================================
+
+    // Private profile: Contains personal details, email, and administrative status.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Client creation and deletion strictly forbidden for students; permitted for admin.
+      allow create, delete: if isAdmin();
+
+      // Students can only update elective profile fields (displayName, programme, year, updatedAt).
+      // Security-critical fields (verificationStatus, accountStatus, email, uid) cannot be tampered with.
+      allow update: if (isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'programme', 'year', 'updatedAt'])
+        && request.resource.data.verificationStatus == resource.data.verificationStatus
+        && request.resource.data.accountStatus == resource.data.accountStatus
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.uid == resource.data.uid)
+        || isAdmin();
+    }
+
+    // Public student profile: Verified students can view reputation and badges.
+    // Never contains personal contact, email, room number or verification documents.
+    match /publicProfiles/{uid} {
+      allow read: if isVerifiedStudent() || isAdmin();
+      allow write: if isAdmin(); // Server/Admin managed only; students have zero write access.
+    }
+
+    // =========================================================================
+    // MARKETPLACE & LISTINGS
+    // =========================================================================
+
+    match /listings/{listingId} {
+      // Active listings discoverable by verified students; owners and admins can see all states.
+      allow read: if (resource.data.status == 'active' && isVerifiedStudent())
+        || (isAuthenticated() && resource.data.ownerUid == request.auth.uid)
+        || isAdmin();
+
+      // Direct client-side creation, updating, and deletion are strictly denied.
+      // All marketplace mutations must proceed through trusted Cloud Functions (createListing,
+      // updateListing, pauseListing, adminModerateListing), which use Firebase Admin SDK to bypass
+      // client rules while enforcing authoritative server-side checks.
+      allow create, update, delete: if false;
+    }
+
+    // =========================================================================
+    // CATALOG & CAMPUS PICKUP ZONES
+    // =========================================================================
+
+    match /categories/{categoryId} {
+      // Authenticated users can read active categories.
+      allow read: if isAuthenticated();
+      // Controlled catalog: Only admins can create/update/delete categories.
+      allow write: if isAdmin();
+    }
+
+    match /pickupZones/{zoneId} {
+      // Verified students can read approved campus pickup locations.
+      allow read: if isVerifiedStudent() || isAdmin();
+      // Only admins can configure approved public pickup points.
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // BACKEND DEVELOPER 2 WORKFLOW COLLECTIONS (SAFE DEFAULT-DENY)
+    // =========================================================================
+
+    // Bookings: Visible to participants and admin; mutations through Cloud Functions only.
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        resource.data.borrowerUid == request.auth.uid ||
+        resource.data.lenderUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if false; // Cloud Functions Admin SDK only.
+    }
+
+    // Booking Slots: Server-side reservation locks. Absolutely no direct client access.
+    match /bookingSlots/{slotId} {
+      allow read, write: if false; // Cloud Functions Admin SDK only.
+    }
+
+    // Handover Events: Append-only audit events managed by Cloud Functions.
+    match /handoverEvents/{eventId} {
+      allow read: if isAuthenticated() && (
+        resource.data.actorUid == request.auth.uid || isAdmin()
+      );
+      allow write: if false;
+    }
+
+    // Emergency Essentials: Verified students can read active requests.
+    match /emergencyRequests/{requestId} {
+      allow read: if isVerifiedStudent() || isAdmin();
+      allow write: if false;
+
+      match /offers/{offerId} {
+        allow read: if isVerifiedStudent() || isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // User Notifications: Private to target recipient.
+    match /notifications/{uid}/items/{notificationId} {
+      allow read: if isOwner(uid);
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow create, delete: if false;
+    }
+
+    // Reviews: Read by verified students; created via trusted backend only.
+    match /reviews/{reviewId} {
+      allow read: if isVerifiedStudent() || isAdmin();
+      allow write: if false;
+    }
+
+    // Reports: Reporter can create and view their own reports; admin resolves.
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && (
+        resource.data.reporterUid == request.auth.uid || isAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.reporterUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Audit Logs: Strictly admin read; write false.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

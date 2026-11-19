@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 'admin' in request.auth.token && request.auth.token.admin == true;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isValidImage() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    // Cross-Service Rule Helper:
+    // Performs live Firestore profile lookups to ensure that a caller with a stale
+    // 'verifiedStudent' JWT claim cannot upload or read listing images if their Firestore account
+    // is suspended, rejected, or missing.
+    //
+    // Quota and Cost Accounting:
+    // - Each cross-service call consumes 1 Firestore document read.
+    // - Storage security rules permit a maximum of 10 Firestore read calls per evaluation.
+    // - Firestore lookups are short-circuited: if 'verifiedStudent' claim is absent,
+    //   Firestore is never queried, preventing unnecessary billable operations.
+    function isVerifiedActiveStudent() {
+      return isAuthenticated()
+        && 'verifiedStudent' in request.auth.token
+        && request.auth.token.verifiedStudent == true
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.accountStatus == 'active'
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.verificationStatus == 'verified';
+    }
+
+    // =========================================================================
+    // LISTING PHOTOGRAPHS
+    // Path: listing-images/{uid}/{listingId}/{fileName}
+    // =========================================================================
+    match /listing-images/{uid}/{listingId}/{fileName} {
+      // Verified active students and administrators can view listing images
+      allow read: if isVerifiedActiveStudent() || isAdmin();
+
+      // Only the verified active owner can upload an image into their UID-scoped directory
+      allow create, update: if isOwner(uid)
+        && isVerifiedActiveStudent()
+        && isValidImage();
+
+      // Owner (if active and verified) or admin can delete listing images
+      allow delete: if (isOwner(uid) && isVerifiedActiveStudent()) || isAdmin();
+    }
+
+    // =========================================================================
+    // TRANSACTION EVIDENCE (Reserved for Backend Developer 2 Handover Photos)
+    // Path: booking-evidence/{bookingId}/{uid}/{fileName}
+    // =========================================================================
+    match /booking-evidence/{bookingId}/{uid}/{fileName} {
+      // Direct client access is strictly denied.
+      // Reserved for future integration by Backend Developer 2 once booking-participant validation is implemented.
+      allow read, write: if false;
+    }
+
+    // Default deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
