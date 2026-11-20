@@ -83,6 +83,7 @@ export function ListingFormPage() {
   const [errors, setErrors] = useState<ListingFormErrors>({});
   const [loading, setLoading] = useState(isEdit);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -236,16 +237,24 @@ export function ListingFormPage() {
     }
 
     setUploading(true);
+    setUploadProgress(0);
     setSubmitError("");
     setErrors((prev) => ({ ...prev, imagePaths: undefined }));
 
     try {
       const uploadedPaths: string[] = [];
-      for (const file of selected) {
+      for (let i = 0; i < selected.length; i++) {
+        const file = selected[i];
         const res = await uploadListingPhoto(
           session.user.uid,
           uploadFolderRef.current,
           file,
+          (filePercent) => {
+            const overall = Math.round(
+              ((i + filePercent / 100) / selected.length) * 100,
+            );
+            setUploadProgress(overall);
+          },
         );
         uploadedPaths.push(res.path);
       }
@@ -257,9 +266,12 @@ export function ListingFormPage() {
         ),
       }));
     } catch (err) {
-      setSubmitError(readableError(err));
+      setSubmitError(
+        `${readableError(err)} You can select another image or retry uploading.`,
+      );
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -299,6 +311,11 @@ export function ListingFormPage() {
           originalListing,
           values,
         );
+        if (Object.keys(payload).length <= 1) {
+          setSuccessMessage("No changes detected on this listing.");
+          setSaving(false);
+          return;
+        }
         const updated = await updateListing(payload);
         setOriginalListing(updated);
         setSuccessMessage("Listing updated atomically and saved.");
@@ -317,6 +334,31 @@ export function ListingFormPage() {
   }
 
   if (loading) return <Loading />;
+
+  const editBlockedReason =
+    isEdit && originalListing && !demo.enabled
+      ? originalListing.status === "removed"
+        ? "This listing was removed by campus moderation and can no longer be edited."
+        : originalListing.ownerUid !== session.user?.uid && !session.isAdmin
+          ? "Only the listing owner or a campus administrator can edit this listing."
+          : ""
+      : "";
+
+  if (editBlockedReason) {
+    return (
+      <div className="listing-form-page">
+        <Link to={href(`/items/${listingId}`)} className="text-link">
+          <ArrowLeft size={15} /> Back to listing
+        </Link>
+        <PageHeading
+          eyebrow="LISTING ACCESS"
+          title="Editing unavailable"
+          description="Server-enforced ownership and moderation rules protect every listing."
+        />
+        <ErrorMessage>{editBlockedReason}</ErrorMessage>
+      </div>
+    );
+  }
 
   return (
     <div className="listing-form-page">
@@ -548,7 +590,7 @@ export function ListingFormPage() {
             <Upload size={20} />
             <span>
               {uploading
-                ? "Uploading to Firebase Storage…"
+                ? `Uploading to Firebase Storage… ${uploadProgress ?? 0}%`
                 : values.imagePaths.length >= MAX_LISTING_IMAGES
                   ? "Maximum 5 photos attached"
                   : "Click to upload item photos"}

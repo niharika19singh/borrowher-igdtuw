@@ -33,9 +33,11 @@ import { ListingFormPage } from "../features/marketplace/ListingFormPage";
 function Protected({ admin = false }: { admin?: boolean }) {
   const session = useAuth();
   const demo = useDemo();
+  const location = useLocation();
   if (demo.enabled) return <Outlet />;
   if (session.loading) return <Loading />;
-  if (!session.user) return <Navigate to="/auth/login" replace />;
+  if (!session.user)
+    return <Navigate to="/auth/login" state={{ from: location }} replace />;
   if (session.error)
     return (
       <div className="standalone">

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { hasStudentAccess, isCollegeEmail, normalizeEmail } from "./identity";
+import {
+  hasStudentAccess,
+  isCollegeEmail,
+  normalizeEmail,
+  readableError,
+} from "./identity";
 
 describe("IGDTUW membership boundary", () => {
   it.each([
@@ -48,4 +53,28 @@ describe("IGDTUW membership boundary", () => {
   ])("denies stale claims or incomplete membership: %j", (patch) =>
     expect(hasStudentAccess({ ...approved, ...patch })).toBe(false),
   );
+});
+
+describe("readableError", () => {
+  it("surfaces Cloud Function Zod validation issue messages", () => {
+    const err = {
+      code: "functions/invalid-argument",
+      message: "Validation failed",
+      details: {
+        issues: [
+          {
+            message:
+              "Maximum borrow days must be greater than or equal to minimum borrow days",
+          },
+        ],
+      },
+    };
+    expect(readableError(err)).toContain("Maximum borrow days");
+  });
+
+  it("returns friendly message for Firebase Storage unauthorized errors", () => {
+    expect(readableError({ code: "storage/unauthorized" })).toContain(
+      "verified active students",
+    );
+  });
 });

@@ -13,7 +13,12 @@ import {
 import { useAuth } from "../app/AuthContext";
 import { useDemo } from "../app/DemoContext";
 import { db, callFunction } from "../firebase/client";
-import type { PublicProfile } from "../types/backend";
+import {
+  DEMO_LISTINGS,
+  subscribeActiveListingsByOwner,
+} from "../services/marketplace";
+import type { Listing, PublicProfile } from "../types/backend";
+import { ListingCard } from "./marketplace/ListingCard";
 import {
   Avatar,
   Empty,
@@ -31,6 +36,11 @@ export function ProfilePage() {
   const session = useAuth();
   const demo = useDemo();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [ownerListings, setOwnerListings] = useState<Listing[]>(
+    demo.enabled
+      ? DEMO_LISTINGS.filter((l) => l.ownerUid === (uid || "me"))
+      : [],
+  );
   const [loading, setLoading] = useState(!demo.enabled);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -58,6 +68,22 @@ export function ProfilePage() {
         setError(readableError(err));
         setLoading(false);
       },
+    );
+  }, [uid, demo.enabled]);
+
+  useEffect(() => {
+    if (demo.enabled) {
+      setOwnerListings(
+        DEMO_LISTINGS.filter((l) => l.ownerUid === (uid || "me")),
+      );
+      return;
+    }
+    if (!uid) {
+      setOwnerListings([]);
+      return;
+    }
+    return subscribeActiveListingsByOwner(uid, setOwnerListings, () =>
+      setOwnerListings([]),
     );
   }, [uid, demo.enabled]);
   if (loading) return <Loading />;
@@ -229,6 +255,24 @@ export function ProfilePage() {
                 </p>
               </div>
             </div>
+          </section>
+          <section className="panel detail-panel">
+            <h2>Active campus listings</h2>
+            {ownerListings.length > 0 ? (
+              <div className="marketplace-grid">
+                {ownerListings.map((item) => (
+                  <ListingCard
+                    key={item.listingId}
+                    listing={item}
+                    isOwner={own}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="quiet-note">
+                No active listings currently shared by this student.
+              </p>
+            )}
           </section>
           {own && (
             <section className="panel detail-panel private-profile">

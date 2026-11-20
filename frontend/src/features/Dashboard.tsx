@@ -1,21 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowDownLeft,
   ArrowRight,
-  ArrowUpRight,
   BookHeart,
   CalendarDays,
   ChevronRight,
   Clock3,
   Heart,
+  PlusCircle,
   Search,
   ShieldCheck,
   Sparkles,
+  Store,
   Zap,
 } from "lucide-react";
 import { useDemo, useHref } from "../app/DemoContext";
 import { useAuth } from "../app/AuthContext";
+import {
+  DEMO_LISTINGS,
+  subscribeMyListings,
+} from "../services/marketplace";
+import type { Listing } from "../types/backend";
 import {
   ArrowLink,
   Avatar,
@@ -27,6 +33,7 @@ import {
   rupees,
 } from "../components/ui";
 import type { BookingView } from "../types/workflows";
+import { ListingCard } from "./marketplace/ListingCard";
 
 export function BookingCard({ booking }: { booking: BookingView }) {
   const href = useHref();
@@ -99,6 +106,25 @@ export function Dashboard({
   const session = useAuth();
   const [tab, setTab] = useState<"borrower" | "lender">("borrower");
   const [search, setSearch] = useState("");
+  const [myListings, setMyListings] = useState<Listing[]>(
+    demo.enabled ? DEMO_LISTINGS.filter((l) => l.ownerUid === "me") : [],
+  );
+
+  useEffect(() => {
+    if (demo.enabled) {
+      setMyListings(DEMO_LISTINGS.filter((l) => l.ownerUid === "me"));
+      return;
+    }
+    if (!session.user?.uid) {
+      setMyListings([]);
+      return;
+    }
+    return subscribeMyListings(session.user.uid, setMyListings, () =>
+      setMyListings([]),
+    );
+  }, [demo.enabled, session.user?.uid]);
+
+  const activeMyListings = myListings.filter((l) => l.status === "active");
   const name = (
     demo.enabled ? demo.name : session.profile?.displayName || "friend"
   ).split(" ")[0];
@@ -169,9 +195,16 @@ export function Dashboard({
                 <br className="desktop-only" /> Find a helping hand on your own
                 campus.
               </p>
-              <Link to={href("/bookings")} className="button primary">
-                My bookings <ArrowRight size={15} />
-              </Link>
+              <div className="button-row">
+                <Link to={href("/marketplace")} className="button primary">
+                  <Store size={15} />
+                  Explore Marketplace <ArrowRight size={15} />
+                </Link>
+                <Link to={href("/listings/new")} className="button outline">
+                  <PlusCircle size={15} />
+                  List an item
+                </Link>
+              </div>
               <span className="campus-hero-note">
                 <ShieldCheck size={14} /> For verified IGDTUW students
               </span>
@@ -197,18 +230,18 @@ export function Dashboard({
           <section className="stats-grid" aria-label="Your sharing overview">
             {[
               {
+                label: "Active campus listings",
+                value: activeMyListings.length.toString().padStart(2, "0"),
+                sub: `${myListings.length} total items listed`,
+                icon: Store,
+                color: "sage",
+              },
+              {
                 label: "Currently borrowing",
                 value: borrowing.length.toString().padStart(2, "0"),
                 sub: "Items to return",
                 icon: ArrowDownLeft,
                 color: "rose",
-              },
-              {
-                label: "Currently lending",
-                value: lending.length.toString().padStart(2, "0"),
-                sub: "Items shared with students",
-                icon: ArrowUpRight,
-                color: "sage",
               },
               {
                 label: "Requests to review",
@@ -299,6 +332,41 @@ export function Dashboard({
               )}
             </div>
           </section>
+          {!bookingsOnly && (
+            <section className="bookings-section">
+              <div className="section-heading">
+                <h2>
+                  <Store size={20} strokeWidth={1.5} />
+                  My campus listings
+                </h2>
+                <ArrowLink to={href("/marketplace")}>Manage all</ArrowLink>
+              </div>
+              {myListings.length > 0 ? (
+                <div className="marketplace-grid">
+                  {myListings.slice(0, 4).map((item) => (
+                    <ListingCard
+                      key={item.listingId}
+                      listing={item}
+                      isOwner
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty
+                  title="No campus listings published yet"
+                  action={
+                    <Link to={href("/listings/new")} className="button primary">
+                      <PlusCircle size={15} />
+                      List your first item
+                    </Link>
+                  }
+                >
+                  Share calculators, textbooks, or lab coats with verified
+                  IGDTUW students.
+                </Empty>
+              )}
+            </section>
+          )}
           {!bookingsOnly && (
             <section className="care-strip">
               <span className="care-icon">

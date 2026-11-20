@@ -25,8 +25,11 @@ export const updateUserProfile = onCall({ region: FUNCTIONS_REGION }, async (req
     }
 
     const currentData = userDoc.data() as UserProfile;
-    if (currentData.accountStatus === 'suspended') {
-      throw new HttpsError('permission-denied', 'Account is suspended. Profile updates are not permitted.');
+    if (currentData.accountStatus !== 'active') {
+      if (currentData.accountStatus === 'suspended') {
+        throw new HttpsError('permission-denied', 'Account is suspended. Profile updates are not permitted.');
+      }
+      throw new HttpsError('permission-denied', 'Account status is invalid or inactive. Profile updates are not permitted.');
     }
 
     const now = new Date().toISOString();
@@ -47,11 +50,16 @@ export const updateUserProfile = onCall({ region: FUNCTIONS_REGION }, async (req
     const batch = db.batch();
     batch.update(userDocRef, updates);
 
-    // If displayName was updated, sync to public profile
+    // If displayName was updated, sync to public profile safely
     if (validatedData.displayName !== undefined) {
-      batch.update(publicDocRef, {
-        displayName: validatedData.displayName,
-      });
+      batch.set(
+        publicDocRef,
+        {
+          uid,
+          displayName: validatedData.displayName,
+        },
+        { merge: true }
+      );
     }
 
     await batch.commit();

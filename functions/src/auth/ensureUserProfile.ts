@@ -21,7 +21,18 @@ export const ensureUserProfile = onCall(
 
   try {
     const uid = request.auth.uid;
-    const email = request.auth.token.email || '';
+    const email = String(request.auth.token.email || '').trim().toLowerCase();
+    const isAdmin = request.auth.token.admin === true;
+
+    // Enforce institutional @igdtuw.ac.in email domain server-side
+    const isCampusEmail = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@igdtuw\.ac\.in$/i.test(email);
+    if (!isAdmin && !isCampusEmail) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only official @igdtuw.ac.in campus email addresses are permitted on BorrowHer.'
+      );
+    }
+
     const userDocRef = db.collection('users').doc(uid);
     const publicDocRef = db.collection('publicProfiles').doc(uid);
 

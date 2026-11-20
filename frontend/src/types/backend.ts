@@ -116,6 +116,22 @@ export interface AdminManageCategoryInput {
   allowedFields?: string[];
 }
 
+export interface AdminManageCategoryResponse {
+  success: boolean;
+  category: Category;
+}
+
+export interface SetAdminRoleInput {
+  targetUid: string;
+  admin: boolean;
+}
+
+export interface SetAdminRoleResponse {
+  success: boolean;
+  targetUid: string;
+  admin: boolean;
+}
+
 export interface CreateListingInput {
   title: string;
   description: string;

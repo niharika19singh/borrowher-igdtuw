@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { NavLink, Outlet, Link, useLocation } from "react-router-dom";
+import {
+  NavLink,
+  Outlet,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   Bell,
   BookHeart,
@@ -32,6 +38,7 @@ export function Shell() {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const location = useLocation();
+  const navigate = useNavigate();
   const name = demo.enabled
     ? demo.name
     : session.profile?.displayName || "Student";
@@ -70,8 +77,11 @@ export function Shell() {
         ? "Edit listing"
         : "My dashboard");
   async function logout() {
+    if (!auth) return;
+    setError("");
     try {
-      await signOut(auth!);
+      await signOut(auth);
+      navigate("/auth/login", { replace: true });
     } catch (err) {
       setError(readableError(err));
     }
@@ -123,12 +133,12 @@ export function Shell() {
           <Bow />
           <h3>Have something spare?</h3>
           <p>Share everyday essentials with other students.</p>
-          <Link to={href("/emergency")}>
-            See urgent requests <Heart size={13} />
+          <Link to={href("/listings/new")} onClick={() => setOpen(false)}>
+            List an item <Heart size={13} />
           </Link>
         </div>
         <div className="sidebar-bottom">
-          <Link to={href("/help")} className="nav-item">
+          <Link to={href("/help")} className="nav-item" onClick={() => setOpen(false)}>
             <CircleHelp size={19} />
             Help & campus care
           </Link>
@@ -149,7 +159,12 @@ export function Shell() {
             <span>
               <strong>{name}</strong>
               <small>
-                IGDTUW · {demo.enabled ? "Sample student" : "Student"}
+                IGDTUW ·{" "}
+                {demo.enabled
+                  ? "Sample student"
+                  : session.isAdmin
+                    ? "Administrator"
+                    : "Student"}
               </small>
             </span>
             <Heart size={15} />

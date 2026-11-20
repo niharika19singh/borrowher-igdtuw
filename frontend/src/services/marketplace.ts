@@ -5,9 +5,15 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import {
+  getDownloadURL,
+  ref,
+  uploadBytesResumable,
+} from "firebase/storage";
 import { callFunction, db, storage } from "../firebase/client";
 import type {
+  AdminManageCategoryInput,
+  AdminManageCategoryResponse,
   Category,
   CreateListingInput,
   GetListingResponse,
@@ -16,6 +22,8 @@ import type {
   PauseListingResponse,
   PickupZone,
   PublicProfile,
+  SetAdminRoleInput,
+  SetAdminRoleResponse,
   UpdateListingInput,
 } from "../types/backend";
 import {
@@ -160,10 +168,57 @@ export async function pauseListing(
   });
 }
 
+export function subscribeActiveListingsByOwner(
+  ownerUid: string,
+  onData: (items: Listing[]) => void,
+  onError: (err: unknown) => void,
+): () => void {
+  if (!db || !ownerUid) {
+    onData([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, "listings"),
+    where("ownerUid", "==", ownerUid),
+    where("status", "==", "active"),
+    limit(20),
+  );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items = snapshot.docs.map((d) => ({
+        ...(d.data() as Listing),
+        listingId: d.id,
+      }));
+      onData(items);
+    },
+    onError,
+  );
+}
+
+export async function manageCategory(
+  input: AdminManageCategoryInput,
+): Promise<AdminManageCategoryResponse> {
+  return callFunction<AdminManageCategoryInput, AdminManageCategoryResponse>(
+    "adminManageCategory",
+    input,
+  );
+}
+
+export async function setAdminRole(
+  input: SetAdminRoleInput,
+): Promise<SetAdminRoleResponse> {
+  return callFunction<SetAdminRoleInput, SetAdminRoleResponse>(
+    "setAdminRole",
+    input,
+  );
+}
+
 export async function uploadListingPhoto(
   uid: string,
   folderId: string,
   file: File,
+  onProgress?: (percent: number) => void,
 ): Promise<{ path: string; url: string }> {
   const fileError = validateImageFile(file);
   if (fileError) {
@@ -174,7 +229,23 @@ export async function uploadListingPhoto(
   }
   const storagePath = buildListingImagePath(uid, folderId, file.name);
   const fileRef = ref(storage, storagePath);
-  await uploadBytes(fileRef, file, { contentType: file.type });
+
+  await new Promise<void>((resolve, reject) => {
+    const task = uploadBytesResumable(fileRef, file, {
+      contentType: file.type,
+    });
+    task.on(
+      "state_changed",
+      (snap) => {
+        if (onProgress && snap.totalBytes > 0) {
+          onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+        }
+      },
+      (err) => reject(err),
+      () => resolve(),
+    );
+  });
+
   const url = await getDownloadURL(fileRef);
   return { path: storagePath, url };
 }

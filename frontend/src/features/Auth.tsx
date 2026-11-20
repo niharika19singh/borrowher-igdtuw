@@ -91,6 +91,25 @@ function AuthFrame({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+function resolvePostAuthDestination(
+  state: unknown,
+  isAdmin: boolean,
+): string {
+  const from = (state as { from?: { pathname?: string; search?: string } } | null)
+    ?.from;
+  const candidate = from?.pathname
+    ? `${from.pathname}${from.search || ""}`
+    : "";
+  if (
+    candidate.startsWith("/") &&
+    !candidate.startsWith("//") &&
+    !candidate.startsWith("/auth")
+  ) {
+    return candidate;
+  }
+  return isAdmin ? "/admin" : "/dashboard";
+}
+
 export function AuthPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -112,7 +131,12 @@ export function AuthPage() {
       </AuthFrame>
     );
   if (session.isStudent || session.isAdmin)
-    return <Navigate to={session.isAdmin ? "/admin" : "/dashboard"} replace />;
+    return (
+      <Navigate
+        to={resolvePostAuthDestination(location.state, session.isAdmin)}
+        replace
+      />
+    );
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -151,16 +175,20 @@ export function AuthPage() {
           await updateProfile(result.user, {
             displayName: String(fields.get("displayName")).trim(),
           });
+          await result.user.getIdToken(true);
           await sendEmailVerification(result.user);
           await callFunction<Record<string, never>, EnsureUserProfileResponse>(
             "ensureUserProfile",
             {},
           );
-          navigate("/auth/verify", { replace: true });
+          navigate("/auth/verify", { replace: true, state: location.state });
         } catch (err) {
           navigate("/auth/verify", {
             replace: true,
             state: {
+              ...(typeof location.state === "object" && location.state
+                ? location.state
+                : {}),
               setupError:
                 readableError(err) +
                 " Your account was created. Use the options below to finish setup.",
@@ -177,7 +205,7 @@ export function AuthPage() {
         } catch {
           /* Verification screen provides an explicit profile setup retry. */
         }
-        navigate("/auth/verify", { replace: true });
+        navigate("/auth/verify", { replace: true, state: location.state });
       }
     } catch (err) {
       setError(readableError(err));
@@ -380,7 +408,12 @@ export function VerifyPage() {
     );
   if (!session.user) return <Navigate to="/auth/login" replace />;
   if (session.isStudent || session.isAdmin)
-    return <Navigate to={session.isAdmin ? "/admin" : "/dashboard"} replace />;
+    return (
+      <Navigate
+        to={resolvePostAuthDestination(location.state, session.isAdmin)}
+        replace
+      />
+    );
   const validEmail = isCollegeEmail(session.user.email || "");
   const emailVerified = session.user.emailVerified;
   const suspended =

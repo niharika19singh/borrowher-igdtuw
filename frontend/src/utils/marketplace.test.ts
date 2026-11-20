@@ -177,4 +177,10 @@ describe("marketplace filtering and sorting", () => {
     });
     expect(byPriceDesc.map((x) => x.listingId)).toEqual(["list_1", "list_2"]);
   });
+
+  it("returns only listingId when no fields changed in buildUpdateListingPayload", () => {
+    const noOp = buildUpdateListingPayload("list_1", existingListing, validForm);
+    expect(noOp).toEqual({ listingId: "list_1" });
+    expect(Object.keys(noOp)).toHaveLength(1);
+  });
 });

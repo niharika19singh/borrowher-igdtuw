@@ -88,7 +88,7 @@ Purchasing every item individually imposes unnecessary financial burdens. **Borr
 
 ---
 
-## 5. Directory  Structure
+## 5. Directory Structure
 
 ```
 borrowher-igdtuw/
@@ -179,16 +179,16 @@ cd frontend && npm ci && cd ..
 ```
 
 ### Running Tests
-BorrowHer includes 151 automated backend, frontend, security rules, and integration tests:
+BorrowHer includes 156 automated backend, frontend, security rules, and end-to-end integration tests:
 
 ```bash
-# Run backend (44 tests) + frontend (37 tests) unit test suites - 81 tests
+# Run backend (44 tests) + frontend (40 tests) unit test suites - 84 tests
 npm run test
 
-# Run Firestore and Storage security rules, transaction concurrency, and bootstrap tests against local emulators - 70 tests
+# Run Firestore and Storage security rules, transaction concurrency, 10-function E2E, and bootstrap tests against local emulators - 72 tests
 npm run test:rules
 
-# Run all test suites in sequence (151 tests total)
+# Run all test suites in sequence (156 tests total)
 npm run test:all
 ```
 

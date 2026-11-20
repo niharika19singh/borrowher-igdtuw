@@ -11,16 +11,26 @@ import {
   Check,
   ClipboardCheck,
   Flag,
+  FolderKanban,
   MapPin,
+  Plus,
   Search,
   ShieldCheck,
+  UserCog,
 } from "lucide-react";
+import { useAuth } from "../app/AuthContext";
 import { useDemo } from "../app/DemoContext";
 import { db, callFunction } from "../firebase/client";
+import {
+  DEMO_CATEGORIES,
+  manageCategory,
+  setAdminRole,
+} from "../services/marketplace";
 import type {
   ApproveStudentInput,
   ApproveStudentResponse,
   AdminModerateListingInput,
+  Category,
   UserProfile,
   ListingSummary,
 } from "../types/backend";
@@ -45,6 +55,7 @@ type Zone = {
   guidance: string;
   accessNote: string;
 };
+
 const sampleStudents: UserProfile[] = [
   {
     uid: "s1",
@@ -69,16 +80,20 @@ const sampleStudents: UserProfile[] = [
     updatedAt: "2026-11-15T08:00:00Z",
   },
 ];
+
 type Review =
   | { kind: "student"; row: UserProfile }
+  | { kind: "adminRole"; row: UserProfile }
   | { kind: "listing"; row: ListingSummary }
+  | { kind: "category"; row: Category | null }
   | { kind: "zone"; row: Zone };
 
 export function AdminPage() {
   const demo = useDemo();
-  const [tab, setTab] = useState<"students" | "listings" | "zones" | "reports">(
-    "students",
-  );
+  const session = useAuth();
+  const [tab, setTab] = useState<
+    "students" | "listings" | "categories" | "zones" | "reports"
+  >("students");
   const [students, setStudents] = useState<UserProfile[]>(
     demo.enabled ? sampleStudents : [],
   );
@@ -92,6 +107,9 @@ export function AdminPage() {
           },
         ]
       : [],
+  );
+  const [categories, setCategories] = useState<Category[]>(
+    demo.enabled ? DEMO_CATEGORIES : [],
   );
   const [zones, setZones] = useState<Zone[]>(
     demo.enabled
@@ -114,6 +132,7 @@ export function AdminPage() {
   const [review, setReview] = useState<Review | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+
   useEffect(() => {
     if (demo.enabled || !db || tab === "reports") {
       setLoading(false);
@@ -126,7 +145,9 @@ export function AdminPage() {
         ? "users"
         : tab === "listings"
           ? "listings"
-          : "pickupZones";
+          : tab === "categories"
+            ? "categories"
+            : "pickupZones";
     return onSnapshot(
       query(collection(db, name), limit(50)),
       (snapshot) => {
@@ -142,6 +163,12 @@ export function AdminPage() {
               (d) => ({ ...d.data(), listingId: d.id }) as ListingSummary,
             ),
           );
+        if (tab === "categories")
+          setCategories(
+            snapshot.docs.map(
+              (d) => ({ ...d.data(), categoryId: d.id }) as Category,
+            ),
+          );
         if (tab === "zones")
           setZones(
             snapshot.docs.map((d) => ({ ...d.data(), zoneId: d.id }) as Zone),
@@ -154,6 +181,7 @@ export function AdminPage() {
       },
     );
   }, [tab, demo.enabled]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!review) return;
@@ -177,7 +205,8 @@ export function AdminPage() {
                     ...row,
                     verificationStatus: status,
                     accountStatus:
-                      status === "suspended" ? "suspended" : row.accountStatus,
+                      status === "suspended" ? "suspended" : "active",
+                    rejectionReason: status === "rejected" ? reason : undefined,
                   }
                 : row,
             ),
@@ -193,12 +222,26 @@ export function AdminPage() {
           });
           if (!result.success) throw new Error("save");
         }
+      } else if (review.kind === "adminRole") {
+        const makeAdmin = String(fields.get("adminAction")) === "grant";
+        if (!demo.enabled && session.user?.uid === review.row.uid && !makeAdmin) {
+          throw new Error("self-demote");
+        }
+        if (!demo.enabled) {
+          const result = await setAdminRole({
+            targetUid: review.row.uid,
+            admin: makeAdmin,
+          });
+          if (!result.success) throw new Error("save");
+        }
       } else if (review.kind === "listing") {
         const status = String(fields.get("status")) as "active" | "removed";
         if (demo.enabled)
           setListings((rows) =>
             rows.map((row) =>
-              row.listingId === review.row.listingId ? { ...row, status } : row,
+              row.listingId === review.row.listingId
+                ? { ...row, status, moderationReason: reason }
+                : row,
             ),
           );
         else {
@@ -212,6 +255,47 @@ export function AdminPage() {
           });
           if (!result.success) throw new Error("save");
         }
+      } else if (review.kind === "category") {
+        const categoryId = String(fields.get("categoryId") || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-");
+        const name = String(fields.get("name") || "").trim();
+        const slug = String(fields.get("slug") || categoryId)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-");
+        const description = String(fields.get("description") || "").trim();
+        const active = String(fields.get("active")) === "true";
+
+        if (!categoryId || name.length < 2 || description.length < 5) {
+          throw new Error("category");
+        }
+
+        if (demo.enabled) {
+          const nextCat: Category = {
+            categoryId,
+            name,
+            slug,
+            description,
+            active,
+          };
+          setCategories((rows) => {
+            const exists = rows.some((c) => c.categoryId === categoryId);
+            return exists
+              ? rows.map((c) => (c.categoryId === categoryId ? nextCat : c))
+              : [...rows, nextCat];
+          });
+        } else {
+          const result = await manageCategory({
+            categoryId,
+            name,
+            slug,
+            description,
+            active,
+          });
+          if (!result.success) throw new Error("save");
+        }
       } else {
         const approvalStatus = String(
           fields.get("status"),
@@ -220,6 +304,8 @@ export function AdminPage() {
           approvalStatus,
           active: approvalStatus === "approved",
           guidance: String(fields.get("guidance")).trim(),
+          reviewedBy: session.user?.uid || "admin",
+          reviewedAt: new Date().toISOString(),
         };
         if (demo.enabled)
           setZones((rows) =>
@@ -232,32 +318,43 @@ export function AdminPage() {
       setReview(null);
       setMessage(
         demo.enabled
-          ? "Sample review saved for this preview."
-          : "Review saved successfully.",
+          ? "Sample admin change saved for this preview."
+          : "Admin action saved successfully.",
       );
     } catch (err) {
-      setError(
-        err instanceof Error && err.message === "reason"
-          ? "Please add a reason with at least 5 characters."
-          : readableError(err),
-      );
+      if (err instanceof Error && err.message === "reason") {
+        setError("Please add a reason with at least 5 characters.");
+      } else if (err instanceof Error && err.message === "self-demote") {
+        setError("Administrators cannot revoke their own admin privilege.");
+      } else if (err instanceof Error && err.message === "category") {
+        setError(
+          "Provide a valid category ID, name (2+ chars), and description (5+ chars).",
+        );
+      } else {
+        setError(readableError(err));
+      }
     } finally {
       setBusy(false);
     }
   }
+
   const matches = (value: string) =>
     value.toLowerCase().includes(search.toLowerCase());
   const filteredStudents = students.filter((s) =>
     matches(`${s.displayName} ${s.email}`),
   );
   const filteredListings = listings.filter((l) => matches(l.title));
+  const filteredCategories = categories.filter((c) =>
+    matches(`${c.name} ${c.categoryId} ${c.description}`),
+  );
   const filteredZones = zones.filter((z) => matches(z.label));
+
   return (
     <>
       <PageHeading
         eyebrow="LOOKING AFTER OUR LITTLE COMMUNITY"
         title="Campus care console"
-        description="Review student accounts, listings and campus pickup zones."
+        description="Review student accounts, listings, categories, admin roles, and campus pickup zones."
         action={
           <Badge tone="green">
             <ShieldCheck size={14} />
@@ -270,7 +367,7 @@ export function AdminPage() {
         <p>
           {demo.enabled
             ? "You’re exploring a sample admin screen. These actions only change the preview."
-            : "Admin actions require trusted server permissions. Review evidence before approving an account or pickup zone."}
+            : "Admin actions enforce server-side admin claims and write immutable audit logs."}
         </p>
       </div>
       <div className="filter-bar">
@@ -286,6 +383,11 @@ export function AdminPage() {
               label: "Listing moderation",
               icon: ClipboardCheck,
             },
+            {
+              key: "categories",
+              label: "Categories",
+              icon: FolderKanban,
+            },
             { key: "zones", label: "Pickup zones", icon: MapPin },
             { key: "reports", label: "Reports", icon: Flag },
           ].map(({ key, label, icon: Icon }) => (
@@ -296,6 +398,8 @@ export function AdminPage() {
               onClick={() => {
                 setTab(key as typeof tab);
                 setSearch("");
+                setMessage("");
+                setError("");
               }}
             >
               <Icon size={15} />
@@ -313,17 +417,34 @@ export function AdminPage() {
               ? "Student accounts"
               : tab === "listings"
                 ? "Campus listings"
-                : "Campus pickup zones"}
+                : tab === "categories"
+                  ? "Marketplace categories"
+                  : "Campus pickup zones"}
           </h2>
-          <label className="search-field">
-            <Search size={16} />
-            <input
-              aria-label="Search admin records"
-              placeholder="Search this list…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+          <div className="button-row">
+            {tab === "categories" && (
+              <button
+                type="button"
+                className="button primary small-button"
+                onClick={() => {
+                  setError("");
+                  setReview({ kind: "category", row: null });
+                }}
+              >
+                <Plus size={15} />
+                Add category
+              </button>
+            )}
+            <label className="search-field">
+              <Search size={16} />
+              <input
+                aria-label="Search admin records"
+                placeholder="Search this list…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+          </div>
         </div>
       )}
       {loading ? (
@@ -341,24 +462,43 @@ export function AdminPage() {
                     <small>
                       {s.programme || "Programme not provided"} ·{" "}
                       {s.year ? `Year ${s.year}` : "Year not provided"}
+                      {s.rejectionReason ? ` · Note: ${s.rejectionReason}` : ""}
                     </small>
                   </div>
                   <Badge
                     tone={
-                      s.verificationStatus === "verified" ? "green" : "amber"
+                      s.accountStatus === "suspended"
+                        ? "neutral"
+                        : s.verificationStatus === "verified"
+                          ? "green"
+                          : "amber"
                     }
                   >
-                    {s.verificationStatus}
+                    {s.accountStatus === "suspended"
+                      ? "suspended"
+                      : s.verificationStatus}
                   </Badge>
-                  <button
-                    className="button outline small-button"
-                    onClick={() => {
-                      setError("");
-                      setReview({ kind: "student", row: s });
-                    }}
-                  >
-                    Review
-                  </button>
+                  <div className="button-row">
+                    <button
+                      className="button outline small-button"
+                      onClick={() => {
+                        setError("");
+                        setReview({ kind: "student", row: s });
+                      }}
+                    >
+                      Review
+                    </button>
+                    <button
+                      className="button outline small-button"
+                      onClick={() => {
+                        setError("");
+                        setReview({ kind: "adminRole", row: s });
+                      }}
+                    >
+                      <UserCog size={14} />
+                      Role
+                    </button>
+                  </div>
                 </article>
               ))
             ) : (
@@ -376,6 +516,9 @@ export function AdminPage() {
                   <div>
                     <h3>{l.title}</h3>
                     <p>Listing · {l.listingId}</p>
+                    {l.moderationReason && (
+                      <small>Moderation note: {l.moderationReason}</small>
+                    )}
                   </div>
                   <Badge tone={l.status === "active" ? "green" : "neutral"}>
                     {l.status}
@@ -394,6 +537,40 @@ export function AdminPage() {
             ) : (
               <Empty title="No listings found">
                 Campus listings will appear here for review.
+              </Empty>
+            ))}
+          {tab === "categories" &&
+            (filteredCategories.length ? (
+              filteredCategories.map((c) => (
+                <article key={c.categoryId} className="admin-row">
+                  <span className="empty-icon">
+                    <FolderKanban size={22} />
+                  </span>
+                  <div>
+                    <h3>{c.name}</h3>
+                    <p>{c.description}</p>
+                    <small>
+                      ID: {c.categoryId} · Slug: {c.slug}
+                    </small>
+                  </div>
+                  <Badge tone={c.active ? "green" : "neutral"}>
+                    {c.active ? "active" : "inactive"}
+                  </Badge>
+                  <button
+                    className="button outline small-button"
+                    onClick={() => {
+                      setError("");
+                      setReview({ kind: "category", row: c });
+                    }}
+                  >
+                    Edit
+                  </button>
+                </article>
+              ))
+            ) : (
+              <Empty title="No categories found">
+                Add campus marketplace categories or run the category seed
+                script.
               </Empty>
             ))}
           {tab === "zones" &&
@@ -429,8 +606,9 @@ export function AdminPage() {
             ))}
           {tab === "reports" && (
             <Empty title="A place for campus concerns">
-              Report review will open when the moderation workflow is connected.
-              Student verification and listing moderation are available in the
+              Report review will open when Backend Developer 2’s moderation
+              report workflow is connected. Student verification, listing
+              moderation, categories, roles, and pickup zones are active in the
               other tabs.
             </Empty>
           )}
@@ -446,86 +624,170 @@ export function AdminPage() {
           title={
             review.kind === "student"
               ? `Review ${review.row.displayName}`
-              : review.kind === "listing"
-                ? "Review campus listing"
-                : "Review pickup zone"
+              : review.kind === "adminRole"
+                ? `Manage admin role · ${review.row.displayName}`
+                : review.kind === "listing"
+                  ? "Review campus listing"
+                  : review.kind === "category"
+                    ? review.row
+                      ? `Edit category · ${review.row.name}`
+                      : "Create campus category"
+                    : "Review pickup zone"
           }
           onClose={() => !busy && setReview(null)}
         >
           <form className="stack-form" onSubmit={submit}>
-            <p className="muted">
-              {review.kind === "student"
-                ? review.row.email
-                : review.kind === "listing"
-                  ? review.row.title
-                  : review.row.label}
-            </p>
-            <label>
-              Decision
-              <select
-                name="status"
-                required
-                defaultValue={
-                  review.kind === "zone"
-                    ? review.row.approvalStatus
-                    : review.kind === "listing"
-                      ? review.row.status === "removed"
-                        ? "removed"
-                        : "active"
-                      : "verified"
-                }
-              >
-                {review.kind === "student" ? (
-                  <>
-                    <option value="verified">Approve student</option>
-                    <option value="rejected">Reject verification</option>
-                    <option value="suspended">Suspend account</option>
-                  </>
-                ) : review.kind === "listing" ? (
-                  <>
-                    <option value="active">Keep / restore listing</option>
-                    <option value="removed">Remove listing</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="pending_review">Keep pending review</option>
-                    <option value="approved">Approve public pickup zone</option>
-                    <option value="rejected">Reject zone</option>
-                  </>
-                )}
-              </select>
-            </label>
-            {review.kind === "zone" ? (
-              <label>
-                Public handover guidance
-                <textarea
-                  name="guidance"
-                  defaultValue={review.row.guidance}
-                  minLength={10}
-                  maxLength={500}
-                  required
-                />
-              </label>
+            {review.kind === "category" ? (
+              <>
+                <label>
+                  Category ID (lowercase slug) *
+                  <input
+                    name="categoryId"
+                    defaultValue={review.row?.categoryId || ""}
+                    readOnly={Boolean(review.row)}
+                    placeholder="e.g., lab-project-equipment"
+                    minLength={2}
+                    maxLength={100}
+                    required
+                  />
+                </label>
+                <label>
+                  Display name *
+                  <input
+                    name="name"
+                    defaultValue={review.row?.name || ""}
+                    placeholder="e.g., Lab & Project Equipment"
+                    minLength={2}
+                    maxLength={100}
+                    required
+                  />
+                </label>
+                <label>
+                  URL slug *
+                  <input
+                    name="slug"
+                    defaultValue={review.row?.slug || ""}
+                    placeholder="e.g., lab-project-equipment"
+                    minLength={2}
+                    maxLength={100}
+                    required
+                  />
+                </label>
+                <label>
+                  Description *
+                  <textarea
+                    name="description"
+                    defaultValue={review.row?.description || ""}
+                    placeholder="Explain what campus items belong in this category."
+                    minLength={5}
+                    maxLength={500}
+                    required
+                  />
+                </label>
+                <label>
+                  Status
+                  <select
+                    name="active"
+                    defaultValue={String(review.row?.active ?? true)}
+                  >
+                    <option value="true">Active (selectable in listings)</option>
+                    <option value="false">Inactive (hidden from new listings)</option>
+                  </select>
+                </label>
+              </>
+            ) : review.kind === "adminRole" ? (
+              <>
+                <p className="muted">{review.row.email}</p>
+                <label>
+                  Administrator privilege
+                  <select name="adminAction" defaultValue="grant" required>
+                    <option value="grant">Grant administrator role</option>
+                    <option value="revoke">Revoke administrator role</option>
+                  </select>
+                </label>
+                <p className="quiet-note">
+                  Invokes server-side `setAdminRole` Cloud Function (`asia-south1`)
+                  and records an immutable entry in `auditLogs`.
+                </p>
+              </>
             ) : (
-              <label>
-                Review reason
-                <textarea
-                  name="reason"
-                  minLength={5}
-                  maxLength={500}
-                  required={review.kind === "listing"}
-                  placeholder="Explain the review decision."
-                />
-              </label>
+              <>
+                <p className="muted">
+                  {review.kind === "student"
+                    ? review.row.email
+                    : review.kind === "listing"
+                      ? review.row.title
+                      : review.row.label}
+                </p>
+                <label>
+                  Decision
+                  <select
+                    name="status"
+                    required
+                    defaultValue={
+                      review.kind === "zone"
+                        ? review.row.approvalStatus
+                        : review.kind === "listing"
+                          ? review.row.status === "removed"
+                            ? "removed"
+                            : "active"
+                          : "verified"
+                    }
+                  >
+                    {review.kind === "student" ? (
+                      <>
+                        <option value="verified">Approve student</option>
+                        <option value="rejected">Reject verification</option>
+                        <option value="suspended">Suspend account</option>
+                      </>
+                    ) : review.kind === "listing" ? (
+                      <>
+                        <option value="active">Keep / restore listing</option>
+                        <option value="removed">Remove listing</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="pending_review">
+                          Keep pending review
+                        </option>
+                        <option value="approved">
+                          Approve public pickup zone
+                        </option>
+                        <option value="rejected">Reject zone</option>
+                      </>
+                    )}
+                  </select>
+                </label>
+                {review.kind === "zone" ? (
+                  <label>
+                    Public handover guidance
+                    <textarea
+                      name="guidance"
+                      defaultValue={review.row.guidance}
+                      minLength={10}
+                      maxLength={500}
+                      required
+                    />
+                  </label>
+                ) : (
+                  <label>
+                    Review reason
+                    <textarea
+                      name="reason"
+                      minLength={5}
+                      maxLength={500}
+                      required={review.kind === "listing"}
+                      placeholder="Explain the review decision."
+                    />
+                  </label>
+                )}
+              </>
             )}
             <label className="checkbox-label">
               <input type="checkbox" required />
               <span>
-                I have reviewed{" "}
-                {review.kind === "zone"
-                  ? "campus access and the safety of this public location"
-                  : "the account or listing and the relevant evidence"}
-                .
+                I confirm this administrative action complies with IGDTUW campus
+                policy.
               </span>
             </label>
             <ErrorMessage>{error}</ErrorMessage>
@@ -540,7 +802,7 @@ export function AdminPage() {
               </button>
               <button className="button primary" disabled={busy}>
                 <Check size={16} />
-                {busy ? "Saving review…" : "Save review"}
+                {busy ? "Saving…" : "Confirm & save"}
               </button>
             </div>
           </form>
